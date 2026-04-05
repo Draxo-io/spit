@@ -40,7 +40,7 @@ class OnboardingWindowController: NSWindowController {
         window?.center()
     }
 
-    func close() {
+    override func close() {
         window?.close()
         NSApp.setActivationPolicy(.accessory)
     }
