@@ -21,6 +21,7 @@ struct MenuBarPopoverView: View {
                 .padding(.vertical, 10)
                 .padding(.horizontal, 16)
             Divider()
+            freeTrialCTAView
             if let result = dictationController.lastResult {
                 lastResultView(result: result)
                     .padding(.vertical, 10)
@@ -117,6 +118,40 @@ struct MenuBarPopoverView: View {
         }
     }
 
+    // MARK: - Free Trial CTA
+
+    @ViewBuilder
+    private var freeTrialCTAView: some View {
+        if creditsManager.freeTrialExhausted {
+            VStack(spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundColor(.orange)
+                        .font(.caption)
+                    Text("Free trial exhausted")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.orange)
+                }
+                Text("Add your OpenAI API key in Settings to continue.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Open Settings → API Key") {
+                    if let delegate = NSApp.delegate as? AppDelegate {
+                        delegate.openSettings()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(.orange)
+            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, 16)
+            Divider()
+        }
+    }
+
     // MARK: - Actions
 
     private var actionsView: some View {
@@ -130,6 +165,17 @@ struct MenuBarPopoverView: View {
                     .font(.caption)
             }
             .buttonStyle(.plain)
+
+            Button {
+                if let delegate = NSApp.delegate as? AppDelegate {
+                    delegate.openAbout()
+                }
+            } label: {
+                Label("About", systemImage: "info.circle")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.secondary)
 
             Spacer()
 

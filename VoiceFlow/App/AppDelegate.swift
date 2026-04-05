@@ -46,6 +46,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         requestAccessibilityPermission()
         LiveSpeechRecognizer.requestPermission()
 
+        // Onboarding — mostrar apenas na primeira execução
+        OnboardingWindowController.shared.showIfNeeded()
+
         vfLog("applicationDidFinishLaunching — DONE ✅")
     }
 
@@ -58,6 +61,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func openSettings() {
         vfLog("openSettings() called")
         SettingsWindowController.shared.show(dictationController: dictationController)
+    }
+
+    func openAbout() {
+        AboutWindowController.shared.show()
     }
 
     // MARK: - Permissões

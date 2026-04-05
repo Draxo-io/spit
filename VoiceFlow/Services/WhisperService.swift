@@ -8,6 +8,10 @@ enum WhisperError: LocalizedError {
     case noAPIKey
     case fileTooLarge
     case networkError(Error)
+    case noInternet
+    case timeout
+    case unauthorized         // 401 — invalid or expired key
+    case rateLimited          // 429 — too many requests
     case apiError(String)
     case invalidResponse
 
@@ -17,6 +21,14 @@ enum WhisperError: LocalizedError {
             return "No API key configured. Go to Settings to add your OpenAI key."
         case .fileTooLarge:
             return "Audio too long (max 25 MB). Try a shorter dictation."
+        case .noInternet:
+            return "No internet connection. Check your network and try again."
+        case .timeout:
+            return "Request timed out. Check your connection and try again."
+        case .unauthorized:
+            return "Invalid API key. Go to Settings and update your OpenAI key."
+        case .rateLimited:
+            return "Too many requests. Wait a moment and try again."
         case .networkError(let e):
             return "Network error: \(e.localizedDescription)"
         case .apiError(let msg):
@@ -138,6 +150,16 @@ class WhisperService {
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await URLSession.shared.data(for: request)
+        } catch let urlError as URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost, .cannotFindHost,
+                 .cannotConnectToHost, .dnsLookupFailed:
+                throw WhisperError.noInternet
+            case .timedOut:
+                throw WhisperError.timeout
+            default:
+                throw WhisperError.networkError(urlError)
+            }
         } catch {
             throw WhisperError.networkError(error)
         }
@@ -146,7 +168,14 @@ class WhisperService {
             throw WhisperError.invalidResponse
         }
 
-        if httpResponse.statusCode != 200 {
+        switch httpResponse.statusCode {
+        case 200:
+            break  // success — continue
+        case 401:
+            throw WhisperError.unauthorized
+        case 429:
+            throw WhisperError.rateLimited
+        default:
             if let apiError = try? JSONDecoder().decode(WhisperAPIError.self, from: data) {
                 throw WhisperError.apiError(apiError.error.message)
             }

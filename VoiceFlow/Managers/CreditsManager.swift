@@ -2,12 +2,13 @@ import Foundation
 import Combine
 
 // MARK: - CreditsManager
-// Controla o free trial e o consumo de minutos do utilizador.
-// Suporta: free trial (API do developer) + BYOK (chave própria, ilimitado).
+// Controla o acesso à API e o consumo de minutos do utilizador.
+// Modelo: BYOK puro — utilizador usa a sua própria chave OpenAI.
+// Free trial = primeiros 30 min com a chave do utilizador (contagem local).
 
 enum APIKeyMode {
-    case freeTrial      // Usa a API key do developer, limitada por minutos
-    case userKey        // BYOK — utilizador tem a sua própria chave
+    case freeTrial      // Chave própria do utilizador, com contagem de 30 min grátis
+    case userKey        // BYOK ilimitado (após confirmar intenção de uso contínuo)
 }
 
 class CreditsManager: ObservableObject {
@@ -36,13 +37,8 @@ class CreditsManager: ObservableObject {
     // MARK: - Chave a usar
 
     var activeAPIKey: String? {
-        switch mode {
-        case .userKey:
-            return KeychainManager.shared.getAPIKey()
-        case .freeTrial:
-            // Chave do developer — carregada de forma segura (não hard-coded)
-            return Bundle.main.object(forInfoDictionaryKey: "VF_DEV_API_KEY") as? String
-        }
+        // Sempre usa a chave do utilizador — BYOK puro
+        return KeychainManager.shared.getAPIKey()
     }
 
     private let minutesUsedKey = "creditsMinutesUsed"
@@ -101,11 +97,12 @@ class CreditsManager: ObservableObject {
     // MARK: - Verificar se pode ditar
 
     func canDictate() -> Bool {
+        guard hasUserAPIKey else { return false }
         switch mode {
         case .userKey:
-            return hasUserAPIKey
+            return true
         case .freeTrial:
-            return !freeTrialExhausted && activeAPIKey != nil
+            return !freeTrialExhausted
         }
     }
 

@@ -66,7 +66,12 @@ class RecordingHUDWindowController: NSWindowController {
     // MARK: - Private
 
     private func presentWithState() {
-        guard let screen = NSScreen.main else { return }
+        // Usar o monitor onde está o cursor do rato (monitor ativo)
+        let mouseLocation = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first(where: {
+            NSMouseInRect(mouseLocation, $0.frame, false)
+        }) ?? NSScreen.main
+        guard let screen = screen else { return }
 
         let windowWidth: CGFloat = 300
         let windowHeight: CGFloat = 44

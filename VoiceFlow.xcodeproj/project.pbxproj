@@ -8,6 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		AA11BB22CC33DD44EE55FF01 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF00 /* Localizable.xcstrings */; };
+		BB22CC33DD44EE55FF001101 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB22CC33DD44EE55FF001100 /* Assets.xcassets */; };
+		CC33DD44EE55FF0011002201 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = CC33DD44EE55FF0011002200 /* PrivacyInfo.xcprivacy */; };
+		DD44EE55FF001100220033A1 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD44EE55FF001100220033A0 /* OnboardingView.swift */; };
+		DD44EE55FF001100220033B1 /* OnboardingWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD44EE55FF001100220033B0 /* OnboardingWindowController.swift */; };
+		EE55FF001100220033440012 /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE55FF001100220033440011 /* AboutView.swift */; };
+		FF00112233445566778800A0 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FF00112233445566778800B0 /* StoreKit.framework */; };
+		FF00112233445566778800C0 /* StoreKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF00112233445566778800D0 /* StoreKitManager.swift */; };
 		05220C78BD50C4A1DB6EC522 /* SettingsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B466240A80F7E18F0B71FD59 /* SettingsWindowController.swift */; };
 		27235E4E4F4487CF373BB875 /* CreditsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC5ACF7D8FED5B618444BB23 /* CreditsManager.swift */; };
 		2EC21C02D5C8C550C4505D7B /* MenuBarPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D407BCB8529AE73EE9F488CB /* MenuBarPopoverView.swift */; };
@@ -38,6 +45,13 @@
 
 /* Begin PBXFileReference section */
 		AA11BB22CC33DD44EE55FF00 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		BB22CC33DD44EE55FF001100 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		CC33DD44EE55FF0011002200 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		DD44EE55FF001100220033A0 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		DD44EE55FF001100220033B0 /* OnboardingWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWindowController.swift; sourceTree = "<group>"; };
+		EE55FF001100220033440011 /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
+		FF00112233445566778800B0 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
+		FF00112233445566778800D0 /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
 		0F465FFF6CCC66B11183207B /* FocusDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusDetector.swift; sourceTree = "<group>"; };
 		12AB48E5869A9BB3CF004DD3 /* ReviewHUDWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewHUDWindowController.swift; sourceTree = "<group>"; };
 		22FD5AD6905A48E505A0184C /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
@@ -78,6 +92,7 @@
 				76B6D7A04C30A737C0377A03 /* ApplicationServices.framework in Frameworks */,
 				AB161B80EEFA033BFE60999B /* AVFoundation.framework in Frameworks */,
 				A8C2919EDD7373685B05A4EB /* Security.framework in Frameworks */,
+				FF00112233445566778800A0 /* StoreKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -127,9 +142,11 @@
 		5AD716C01C1D367F94FCC4F4 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				BB22CC33DD44EE55FF001100 /* Assets.xcassets */,
+				CC33DD44EE55FF0011002200 /* PrivacyInfo.xcprivacy */,
 				AA11BB22CC33DD44EE55FF00 /* Localizable.xcstrings */,
 				748F4B7101B660EE8596C05B /* Info.plist */,
-				67C6FBD5594FF53F223EDC82 /* VoiceFlow.entitlements */,
+				67C6FBD5594FF53F223EDC82 /* Spit.entitlements */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -137,7 +154,10 @@
 		7558A0589D812BB62929DD6E /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				EE55FF001100220033440011 /* AboutView.swift */,
 				D407BCB8529AE73EE9F488CB /* MenuBarPopoverView.swift */,
+				DD44EE55FF001100220033A0 /* OnboardingView.swift */,
+				DD44EE55FF001100220033B0 /* OnboardingWindowController.swift */,
 				CECAD5F23BD27F548C218A78 /* RecordingHUDView.swift */,
 				818F80C30C4A908B2DAFDB19 /* RecordingHUDWindowController.swift */,
 				E91675D2E2B233361518EF77 /* ReviewHUDView.swift */,
@@ -153,6 +173,7 @@
 			children = (
 				BC5ACF7D8FED5B618444BB23 /* CreditsManager.swift */,
 				901EF97E76130804EE29271F /* KeychainManager.swift */,
+				FF00112233445566778800D0 /* StoreKitManager.swift */,
 				319B7629734CB325D41CFDFC /* VocabularyManager.swift */,
 			);
 			path = Managers;
@@ -174,6 +195,7 @@
 				AF4029B389CDD9DBB8F04876 /* AVFoundation.framework */,
 				D7AA9B01B87B1DCC7F3CD91F /* Carbon.framework */,
 				76223DD2AD09CCA95F7FD095 /* Security.framework */,
+				FF00112233445566778800B0 /* StoreKit.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -270,6 +292,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA11BB22CC33DD44EE55FF01 /* Localizable.xcstrings in Resources */,
+				BB22CC33DD44EE55FF001101 /* Assets.xcassets in Resources */,
+				CC33DD44EE55FF0011002201 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -292,6 +316,10 @@
 				BF46E60EE765FFD784AA59AA /* LiveSpeechRecognizer.swift in Sources */,
 				EE18418DCC5233149126061E /* MenuBarController.swift in Sources */,
 				2EC21C02D5C8C550C4505D7B /* MenuBarPopoverView.swift in Sources */,
+				DD44EE55FF001100220033A1 /* OnboardingView.swift in Sources */,
+				DD44EE55FF001100220033B1 /* OnboardingWindowController.swift in Sources */,
+				EE55FF001100220033440012 /* AboutView.swift in Sources */,
+				FF00112233445566778800C0 /* StoreKitManager.swift in Sources */,
 				84F6FF0A6FCB9286F2C9A354 /* RecordingHUDView.swift in Sources */,
 				CA255FEFADCAFD3CD4055C34 /* RecordingHUDWindowController.swift in Sources */,
 				D9FAB33C8EAB788477C8BC97 /* ReviewHUDView.swift in Sources */,

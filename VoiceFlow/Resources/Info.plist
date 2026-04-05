@@ -26,7 +26,5 @@
 	<string>Spit needs microphone access to transcribe your voice to text.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Spit uses speech recognition to show a live preview of what you're saying while recording.</string>
-	<key>VF_DEV_API_KEY</key>
-	<string></string>
 </dict>
 </plist>

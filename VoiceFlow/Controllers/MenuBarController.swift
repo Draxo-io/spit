@@ -125,15 +125,10 @@ class MenuBarController: NSObject {
     }
 
     private func openPanel() {
-        guard let button = statusItem.button,
-              let buttonWindow = button.window else {
-            vfLog("openPanel — statusItem button or its window is nil")
+        guard let button = statusItem.button else {
+            vfLog("openPanel — statusItem button is nil")
             return
         }
-
-        // Calcular a posição usando coordenadas de ecrã reais do botão
-        let buttonFrameInWindow = button.convert(button.bounds, to: nil)
-        let buttonScreenFrame = buttonWindow.convertToScreen(buttonFrameInWindow)
 
         // Ajustar tamanho ao conteúdo SwiftUI
         let panelWidth: CGFloat = 300
@@ -143,14 +138,43 @@ class MenuBarController: NSObject {
             if fitted.height > 10 { panelHeight = fitted.height }
         }
 
+        // Obter posição real do botão no ecrã
+        // Método 1 (preferido): via button.window.convertToScreen
+        // Método 2 (fallback): via NSScreen.main — coloca no canto superior direito
+        let buttonScreenFrame: NSRect
+
+        if let buttonWindow = button.window {
+            let frameInWindow = button.convert(button.bounds, to: nil)
+            buttonScreenFrame = buttonWindow.convertToScreen(frameInWindow)
+            vfLog("openPanel — buttonWindow OK, buttonScreenFrame: \(buttonScreenFrame)")
+        } else {
+            // Fallback: usar mouse location para inferir o ecrã ativo
+            let mouseScreen = NSScreen.screens.first(where: {
+                NSMouseInRect(NSEvent.mouseLocation, $0.frame, false)
+            }) ?? NSScreen.main
+            let sf = mouseScreen?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+            // Posicionar no canto superior direito do ecrã ativo (onde a menu bar está)
+            buttonScreenFrame = NSRect(
+                x: sf.maxX - panelWidth / 2 - 20,
+                y: sf.maxY - 22,  // altura aproximada da menu bar
+                width: panelWidth,
+                height: 22
+            )
+            vfLog("openPanel — FALLBACK positioning near top-right, screen: \(sf)")
+        }
+
         // Posicionar imediatamente abaixo do ícone, centrado horizontalmente
         let x = buttonScreenFrame.midX - panelWidth / 2
         let y = buttonScreenFrame.minY - panelHeight - 6  // 6px de espaço
 
         panel.setFrame(NSRect(x: x, y: y, width: panelWidth, height: panelHeight), display: false)
 
-        // Garantir que não sai fora do ecrã à direita (usar o ecrã do botão)
-        if let screen = buttonWindow.screen ?? NSScreen.main {
+        // Garantir que não sai fora dos limites do ecrã
+        let targetScreen = NSScreen.screens.first(where: {
+            NSPointInRect(NSPoint(x: buttonScreenFrame.midX, y: buttonScreenFrame.midY), $0.frame)
+        }) ?? NSScreen.main
+
+        if let screen = targetScreen {
             var frame = panel.frame
             if frame.maxX > screen.visibleFrame.maxX {
                 frame.origin.x = screen.visibleFrame.maxX - frame.width - 8
@@ -158,13 +182,15 @@ class MenuBarController: NSObject {
             if frame.origin.x < screen.visibleFrame.minX {
                 frame.origin.x = screen.visibleFrame.minX + 8
             }
-            if frame != panel.frame {
-                panel.setFrame(frame, display: false)
+            if frame.origin.y < screen.visibleFrame.minY {
+                // Se o painel ficaria abaixo do ecrã, mostrar acima do ícone
+                frame.origin.y = buttonScreenFrame.maxY + 6
             }
+            panel.setFrame(frame, display: false)
         }
 
         panel.orderFront(nil)
-        vfLog("openPanel — positioned at \(panel.frame)")
+        vfLog("openPanel — final frame: \(panel.frame)")
 
         // Fechar quando clica fora do painel
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(

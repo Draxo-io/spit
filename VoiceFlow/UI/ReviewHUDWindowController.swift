@@ -30,7 +30,12 @@ class ReviewHUDWindowController: NSWindowController {
     // MARK: - Mostrar HUD
 
     func show(result: DictationResult, controller: DictationController) {
-        guard let screen = NSScreen.main else { return }
+        // Usar o monitor onde está o cursor do rato (monitor ativo)
+        let mouseLocation = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first(where: {
+            NSMouseInRect(mouseLocation, $0.frame, false)
+        }) ?? NSScreen.main
+        guard let screen = screen else { return }
 
         // Posicionar no canto inferior direito
         let screenRect = screen.visibleFrame

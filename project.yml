@@ -25,7 +25,6 @@ targets:
         LSUIElement: true
         LSMinimumSystemVersion: "13.0"
         NSMicrophoneUsageDescription: "Spit needs microphone access to transcribe your voice to text."
-        VF_DEV_API_KEY: ""
     entitlements:
       path: VoiceFlow/Resources/Spit.entitlements
       properties:
@@ -42,3 +41,4 @@ targets:
       - sdk: ApplicationServices.framework
       - sdk: AVFoundation.framework
       - sdk: Security.framework
+      - sdk: StoreKit.framework

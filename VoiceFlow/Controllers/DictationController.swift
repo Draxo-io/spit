@@ -371,16 +371,6 @@ class DictationController: ObservableObject {
         return learned
     }
 
-    // MARK: - Hotkey Update
-
-    func updateHotkey(keyCode: UInt32, modifiers: UInt32) {
-        hotkeyManager.register(keyCode: keyCode, modifiers: modifiers)
-        var settings = loadSettings()
-        settings.hotkeyKeyCode = keyCode
-        settings.hotkeyModifiers = modifiers
-        saveSettings(settings)
-    }
-
     // MARK: - Helpers
 
     private func showError(_ message: String) {
