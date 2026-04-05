@@ -1,0 +1,106 @@
+{
+  "" : {
+    "const-values" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VoiceFlow-primary.swiftconstvalues",
+    "dependencies" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VoiceFlow-primary.d",
+    "diagnostics" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VoiceFlow-primary.dia",
+    "emit-module-dependencies" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VoiceFlow-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VoiceFlow-primary-emit-module.dia",
+    "pch" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VoiceFlow-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VoiceFlow-primary.swiftdeps"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/App/AppDelegate.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/AppDelegate.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/AppDelegate.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/AppDelegate.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/App/main.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/main.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/main.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/main.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/Controllers/DictationController.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/DictationController.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/DictationController.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/DictationController.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/Controllers/MenuBarController.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/MenuBarController.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/MenuBarController.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/MenuBarController.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/Managers/CreditsManager.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/CreditsManager.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/CreditsManager.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/CreditsManager.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/Managers/KeychainManager.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/KeychainManager.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/KeychainManager.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/KeychainManager.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/Managers/VocabularyManager.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VocabularyManager.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VocabularyManager.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VocabularyManager.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/Models/AppState.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/AppState.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/AppState.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/AppState.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/Services/AudioRecorder.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/AudioRecorder.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/AudioRecorder.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/AudioRecorder.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/Services/FileLogger.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/FileLogger.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/FileLogger.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/FileLogger.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/Services/FocusDetector.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/FocusDetector.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/FocusDetector.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/FocusDetector.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/Services/HotkeyManager.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/HotkeyManager.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/HotkeyManager.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/HotkeyManager.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/Services/TextInjector.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/TextInjector.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/TextInjector.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/TextInjector.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/Services/WhisperService.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/WhisperService.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/WhisperService.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/WhisperService.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/UI/MenuBarPopoverView.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/MenuBarPopoverView.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/MenuBarPopoverView.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/MenuBarPopoverView.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/UI/ReviewHUDView.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/ReviewHUDView.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/ReviewHUDView.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/ReviewHUDView.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/UI/ReviewHUDWindowController.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/ReviewHUDWindowController.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/ReviewHUDWindowController.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/ReviewHUDWindowController.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/UI/SettingsView.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/SettingsView.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/SettingsView.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/SettingsView.o"
+  },
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/UI/SettingsWindowController.swift" : {
+    "index-unit-output-path" : "/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/SettingsWindowController.o",
+    "llvm-bc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/SettingsWindowController.bc",
+    "object" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/SettingsWindowController.o"
+  }
+}

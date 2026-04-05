@@ -1,0 +1,44 @@
+name: Spit
+options:
+  bundleIdPrefix: com.rafaellopes
+  deploymentTarget:
+    macOS: "13.0"
+  xcodeVersion: "15.0"
+
+settings:
+  base:
+    PRODUCT_NAME: Spit
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""  # Preencher com o teu Team ID
+
+targets:
+  Spit:
+    type: application
+    platform: macOS
+    sources:
+      - VoiceFlow
+    info:
+      path: VoiceFlow/Resources/Info.plist
+      properties:
+        LSUIElement: true
+        LSMinimumSystemVersion: "13.0"
+        NSMicrophoneUsageDescription: "Spit needs microphone access to transcribe your voice to text."
+        VF_DEV_API_KEY: ""
+    entitlements:
+      path: VoiceFlow/Resources/Spit.entitlements
+      properties:
+        com.apple.security.device.audio-input: true
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.getspit
+        INFOPLIST_FILE: VoiceFlow/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: VoiceFlow/Resources/Spit.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - sdk: Carbon.framework
+      - sdk: ApplicationServices.framework
+      - sdk: AVFoundation.framework
+      - sdk: Security.framework

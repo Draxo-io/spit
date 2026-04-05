@@ -1,0 +1,12 @@
+{
+  "/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/App/AppDelegate.swift" : {
+    "abi-baseline-json" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VoiceFlow.abi.json",
+    "const-values" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VoiceFlow-primary.swiftconstvalues",
+    "dependencies" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VoiceFlow-primary.d",
+    "diagnostics" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VoiceFlow-primary.dia",
+    "objc-header" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VoiceFlow-Swift.h",
+    "swiftdoc" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VoiceFlow.swiftdoc",
+    "swiftmodule" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VoiceFlow.swiftmodule",
+    "swiftsourceinfo" : "/Users/rafaellopes/projects/VoiceFlow/build/Build/Intermediates.noindex/VoiceFlow.build/Release/VoiceFlow.build/Objects-normal/arm64/VoiceFlow.swiftsourceinfo"
+  }
+}
