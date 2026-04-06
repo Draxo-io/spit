@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox   // cmdKey, shiftKey, optionKey, controlKey
 
 // MARK: - HotkeyManager
 // Detecção de atalho via NSEvent monitors (local + global).

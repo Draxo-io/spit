@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import UserNotifications
 
 // MARK: - TextInjector
 // Injecta texto no campo com foco.
@@ -220,10 +221,22 @@ class TextInjector {
     // MARK: - Notificação Visual
 
     func showClipboardNotification() {
-        let notification = NSUserNotification()
-        notification.title = "Spit"
-        notification.informativeText = "Texto copiado. Prima ⌘V para colar."
-        notification.soundName = nil
-        NSUserNotificationCenter.default.deliver(notification)
+        let center = UNUserNotificationCenter.current()
+
+        // Pedir autorização se ainda não foi concedida (silencioso — não mostra diálogo aqui)
+        center.requestAuthorization(options: [.alert]) { _, _ in }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Spit"
+        content.body  = "Texto copiado. Prima ⌘V para colar."
+
+        let request = UNNotificationRequest(
+            identifier: "spit.clipboard",
+            content: content,
+            trigger: nil   // entregar imediatamente
+        )
+        center.add(request) { error in
+            if let error { vfLog("UNNotification error: \(error)") }
+        }
     }
 }
