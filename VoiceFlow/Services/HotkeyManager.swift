@@ -9,6 +9,11 @@ import Carbon.HIToolbox   // cmdKey, shiftKey, optionKey, controlKey
 // Global monitor → dispara quando outra app está em primeiro plano
 // Local monitor  → dispara quando Spit está em primeiro plano (janela Settings aberta)
 // PTT usa NSEvent.addGlobalMonitorForEvents para keyDown + keyUp.
+//
+// Globe (🌐 / Fn) — keyCode 63 — gera .flagsChanged, não .keyDown.
+// Tratado com monitors dedicados tanto em toggle como em PTT.
+
+private let kGlobeKeyCode: UInt32 = 63
 
 class HotkeyManager {
 
@@ -17,6 +22,7 @@ class HotkeyManager {
     private var toggleLocalMonitor: Any?
     private var registeredKeyCode: UInt32 = 0
     private var registeredModifiers: UInt32 = 0
+    private var globeWasDown = false          // evita disparo repetido enquanto Globe está pressionada
     var onHotkeyPressed: (() -> Void)?
 
     // Push-to-talk
@@ -25,6 +31,7 @@ class HotkeyManager {
     private var pttMonitor: Any?
     private var pttKeyCode: UInt32 = 0
     private var pttModifiers: UInt32 = 0
+    private var pttGlobeDown = false
 
     static var shared: HotkeyManager?
 
@@ -39,23 +46,49 @@ class HotkeyManager {
         registeredKeyCode = keyCode
         registeredModifiers = modifiers
 
-        // Global: captura quando outras apps estão em primeiro plano
-        // Requer Accessibility (já pedida pela app para text injection)
+        if keyCode == kGlobeKeyCode {
+            registerGlobeToggle()
+        } else {
+            registerKeyDownToggle()
+        }
+
+        vfLog("✅ Hotkey registado — keyCode:\(keyCode) modifiers:\(modifiers)")
+    }
+
+    // Toggle via .keyDown (teclas normais)
+    private func registerKeyDownToggle() {
         toggleGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             self?.handleToggleEvent(event)
         }
-
-        // Local: captura quando Spit está em primeiro plano (Settings aberto)
         toggleLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event -> NSEvent? in
             guard let self else { return event }
-            // Não interceptar durante gravação de atalho na SettingsView
-            if self.handleToggleEvent(event) {
-                return nil  // consumir evento
-            }
+            if self.handleToggleEvent(event) { return nil }
             return event
         }
+    }
 
-        vfLog("✅ Hotkey registado (NSEvent) — keyCode:\(keyCode) modifiers:\(modifiers)")
+    // Toggle via .flagsChanged (Globe / Fn key)
+    private func registerGlobeToggle() {
+        globeWasDown = false
+
+        toggleGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
+            self?.handleGlobeToggleEvent(event)
+        }
+        toggleLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event -> NSEvent? in
+            self?.handleGlobeToggleEvent(event)
+            return event   // não consumir — macOS precisa do evento para o próprio Globe menu
+        }
+    }
+
+    private func handleGlobeToggleEvent(_ event: NSEvent) {
+        guard event.keyCode == kGlobeKeyCode else { return }
+        let isDown = event.modifierFlags.contains(.function)
+        if isDown && !globeWasDown {
+            globeWasDown = true
+            DispatchQueue.main.async { [weak self] in self?.onHotkeyPressed?() }
+        } else if !isDown {
+            globeWasDown = false
+        }
     }
 
     /// Verifica se o evento corresponde ao atalho registado. Devolve true se disparou.
@@ -76,6 +109,7 @@ class HotkeyManager {
     func unregister() {
         if let m = toggleGlobalMonitor { NSEvent.removeMonitor(m); toggleGlobalMonitor = nil }
         if let m = toggleLocalMonitor  { NSEvent.removeMonitor(m); toggleLocalMonitor  = nil }
+        globeWasDown = false
         vfLog("Toggle hotkey desregistado")
     }
 
@@ -86,16 +120,25 @@ class HotkeyManager {
         pttKeyCode = keyCode
         pttModifiers = modifiers
 
+        if keyCode == kGlobeKeyCode {
+            registerGlobePTT()
+        } else {
+            registerKeyDownPTT()
+        }
+
+        vfLog("PTT registado — keyCode:\(keyCode) modifiers:\(modifiers)")
+    }
+
+    // PTT via .keyDown/.keyUp (teclas normais)
+    private func registerKeyDownPTT() {
         pttMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.keyDown, .keyUp, .flagsChanged]
         ) { [weak self] event in
             guard let self else { return }
-            let eventKeyCode = UInt32(event.keyCode)
-            guard eventKeyCode == self.pttKeyCode else { return }
+            guard UInt32(event.keyCode) == self.pttKeyCode else { return }
 
             if self.pttModifiers != 0 {
-                let eventMods = self.carbonModifiers(from: event)
-                guard eventMods == self.pttModifiers else { return }
+                guard self.carbonModifiers(from: event) == self.pttModifiers else { return }
             }
 
             if event.type == .keyDown && !event.isARepeat {
@@ -104,7 +147,23 @@ class HotkeyManager {
                 DispatchQueue.main.async { self.onPTTKeyUp?() }
             }
         }
-        vfLog("PTT registado — keyCode:\(keyCode) modifiers:\(modifiers)")
+    }
+
+    // PTT via .flagsChanged (Globe / Fn key)
+    private func registerGlobePTT() {
+        pttGlobeDown = false
+
+        pttMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
+            guard let self, event.keyCode == kGlobeKeyCode else { return }
+            let isDown = event.modifierFlags.contains(.function)
+            if isDown && !self.pttGlobeDown {
+                self.pttGlobeDown = true
+                DispatchQueue.main.async { self.onPTTKeyDown?() }
+            } else if !isDown && self.pttGlobeDown {
+                self.pttGlobeDown = false
+                DispatchQueue.main.async { self.onPTTKeyUp?() }
+            }
+        }
     }
 
     func unregisterPTT() {
@@ -113,6 +172,7 @@ class HotkeyManager {
             pttMonitor = nil
             vfLog("PTT desregistado")
         }
+        pttGlobeDown = false
         onPTTKeyDown = nil
         onPTTKeyUp = nil
     }

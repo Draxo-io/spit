@@ -18,19 +18,27 @@ private func modifierSymbols(_ carbonMods: UInt32) -> String {
 private func keyLabel(_ keyCode: UInt32) -> String {
     let map: [UInt32: String] = [
         0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X",
-        8: "C", 9: "V", 11: "B", 12: "Q", 13: "W", 14: "E", 15: "R",
+        8: "C", 9: "V", 10: "§", 11: "B", 12: "Q", 13: "W", 14: "E", 15: "R",
         16: "Y", 17: "T", 18: "1", 19: "2", 20: "3", 21: "4", 22: "6",
         23: "5", 24: "=", 25: "9", 26: "7", 27: "-", 28: "8", 29: "0",
         30: "]", 31: "O", 32: "U", 33: "[", 34: "I", 35: "P",
         37: "L", 38: "J", 39: "'", 40: "K", 41: ";", 42: "\\",
         43: ",", 44: "/", 45: "N", 46: "M", 47: ".",
         36: "↩", 48: "⇥", 49: "Space", 51: "⌫", 53: "⎋",
+        63: "🌐",
         96: "F5", 97: "F6", 98: "F7", 99: "F3", 100: "F8", 101: "F9",
         103: "F11", 109: "F10", 111: "F12", 118: "F4", 120: "F2", 122: "F1",
         123: "←", 124: "→", 125: "↓", 126: "↑",
         115: "↖", 119: "↘", 116: "⇞", 121: "⇟",
     ]
     return map[keyCode] ?? "?"
+}
+
+/// Keys that are safe to use without a modifier (won't intercept normal typing)
+private func isSafeAloneKey(_ keyCode: UInt32) -> Bool {
+    // § (10), Globe (63), F1–F12
+    let safe: Set<UInt32> = [10, 63, 96, 97, 98, 99, 100, 101, 103, 109, 111, 118, 120, 122]
+    return safe.contains(keyCode)
 }
 
 /// Converts NSEvent.ModifierFlags → Carbon modifier flags
@@ -64,11 +72,13 @@ struct SettingsView: View {
     // Toggle shortcut recorder state
     @State private var isRecordingShortcut = false
     @State private var shortcutEventMonitor: Any? = nil
+    @State private var shortcutGlobeMonitor: Any? = nil   // flagsChanged para Globe
     @State private var shortcutConflict: String? = nil
 
     // PTT shortcut recorder state
     @State private var isRecordingPTT = false
     @State private var pttEventMonitor: Any? = nil
+    @State private var pttGlobeMonitor: Any? = nil         // flagsChanged para Globe
     @State private var pttConflict: String? = nil
 
     // Interface language options: (code, native name)
@@ -529,8 +539,20 @@ struct SettingsView: View {
         pttConflict = nil
         isRecordingPTT = true
 
+        // Globe via flagsChanged
+        pttGlobeMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { [self] event in
+            guard event.keyCode == 63 else { return event }
+            if event.modifierFlags.contains(.function) {
+                if 63 == settings.hotkeyKeyCode && settings.hotkeyModifiers == 0 {
+                    pttConflict = "Conflicts with the dictation toggle shortcut."
+                } else {
+                    applyNewPTT(keyCode: 63, modifiers: 0)
+                }
+            }
+            return nil
+        }
+
         pttEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [self] event in
-            // Escape = cancelar
             if event.keyCode == 53 {
                 stopRecordingPTTShortcut()
                 return nil
@@ -541,7 +563,6 @@ struct SettingsView: View {
                 event.modifierFlags.intersection([.command, .shift, .option, .control])
             )
 
-            // Confirmar que não conflitua com o atalho principal
             if carbonKey == settings.hotkeyKeyCode && carbonMods == settings.hotkeyModifiers {
                 pttConflict = "Conflicts with the dictation toggle shortcut."
                 return nil
@@ -567,10 +588,8 @@ struct SettingsView: View {
 
     private func stopRecordingPTTShortcut() {
         isRecordingPTT = false
-        if let monitor = pttEventMonitor {
-            NSEvent.removeMonitor(monitor)
-            pttEventMonitor = nil
-        }
+        if let m = pttEventMonitor { NSEvent.removeMonitor(m); pttEventMonitor = nil }
+        if let m = pttGlobeMonitor { NSEvent.removeMonitor(m); pttGlobeMonitor = nil }
     }
 
     // MARK: - Shortcut Row
@@ -645,27 +664,34 @@ struct SettingsView: View {
         shortcutConflict = nil
         isRecordingShortcut = true
 
-        shortcutEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [self] event in
-            let mods = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        // Globe key (keyCode 63) não gera .keyDown — usa .flagsChanged
+        shortcutGlobeMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { [self] event in
+            guard event.keyCode == 63 else { return event }
+            // Só reagir ao press (flag .function a aparecer), não ao release
+            if event.modifierFlags.contains(.function) {
+                applyNewShortcut(keyCode: 63, modifiers: 0)
+            }
+            return nil
+        }
 
-            // Escape = cancel
+        shortcutEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [self] event in
+            // Escape = cancelar
             if event.keyCode == 53 {
                 stopRecordingShortcut(save: false)
                 return nil
             }
 
-            // Must have at least one modifier
-            guard !mods.isEmpty else {
-                shortcutConflict = "Shortcut must include at least one modifier (⌘ ⌥ ⌃ ⇧)"
+            let carbonKey = UInt32(event.keyCode)
+            let mods = event.modifierFlags.intersection([.command, .shift, .option, .control])
+
+            // Permitir sem modificador apenas para teclas "seguras" (§, F-keys)
+            if mods.isEmpty && !isSafeAloneKey(carbonKey) {
+                shortcutConflict = "Add a modifier (⌘ ⌥ ⌃ ⇧) or use §, 🌐, or an F-key"
                 return nil
             }
 
-            // Must not be modifier-only (no real key)
-            let carbonKey = UInt32(event.keyCode)
-            let carbonMods = toCarbonModifiers(mods)
-
-            applyNewShortcut(keyCode: carbonKey, modifiers: carbonMods)
-            return nil  // consume event
+            applyNewShortcut(keyCode: carbonKey, modifiers: toCarbonModifiers(mods))
+            return nil
         }
     }
 
@@ -680,10 +706,8 @@ struct SettingsView: View {
 
     private func stopRecordingShortcut(save _: Bool) {
         isRecordingShortcut = false
-        if let monitor = shortcutEventMonitor {
-            NSEvent.removeMonitor(monitor)
-            shortcutEventMonitor = nil
-        }
+        if let m = shortcutEventMonitor { NSEvent.removeMonitor(m); shortcutEventMonitor = nil }
+        if let m = shortcutGlobeMonitor { NSEvent.removeMonitor(m); shortcutGlobeMonitor = nil }
     }
 
     // MARK: - Save
