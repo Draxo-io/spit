@@ -383,9 +383,14 @@ class DictationController: ObservableObject {
             // Dismiss recording HUD, show review HUD
             RecordingHUDWindowController.shared.dismiss()
 
-            if settings.showReviewHUD {
+            // Mostrar Review HUD apenas quando a colagem automática falhou —
+            // se o texto já foi injectado/colado no campo, o utilizador não precisa
+            // de rever nada e o HUD seria apenas ruído visual.
+            // O utilizador pode forçar mostrar sempre via Settings (showReviewHUD).
+            let pasteSucceeded = !result.pastedViaClipboard
+            if !pasteSucceeded || settings.showReviewHUD {
                 let resultCopy = result
-                try? await Task.sleep(nanoseconds: 150_000_000)  // 150ms — let paste process first
+                try? await Task.sleep(nanoseconds: 150_000_000)  // 150ms — let paste settle first
                 ReviewHUDWindowController.shared.show(result: resultCopy, controller: self)
             }
 

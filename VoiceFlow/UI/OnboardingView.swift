@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import AVFoundation
 
 // MARK: - OnboardingView
 // Mostrado na primeira execução — guia o utilizador pelo setup:
@@ -15,6 +16,8 @@ struct OnboardingView: View {
     @State private var apiKeySaved: Bool = false
     @State private var apiKeyError: Bool = false
     @State private var hasExistingKey: Bool = false   // chave já guardada no Keychain
+    @State private var micGranted: Bool = false
+    @State private var axGranted: Bool = false
     @EnvironmentObject var creditsManager: CreditsManager
 
     private let totalSteps = 4
@@ -76,11 +79,13 @@ struct OnboardingView: View {
         }
         .frame(width: 520, height: 420)
         .onAppear {
-            // Se já existe chave no Keychain (reinstalação / upgrade), pré-validar
+            // Chave no Keychain (reinstalação/upgrade)
             if creditsManager.hasUserAPIKey {
                 hasExistingKey = true
                 apiKeySaved = true
             }
+            // Estado actual das permissões
+            refreshPermissionStatus()
         }
     }
 
@@ -219,11 +224,12 @@ struct OnboardingView: View {
 
     private var stepPermissions: some View {
         VStack(spacing: 20) {
-            Image(systemName: "hand.raised.fill")
+            // Ícone muda consoante o estado geral
+            Image(systemName: micGranted && axGranted ? "checkmark.shield.fill" : "hand.raised.fill")
                 .font(.system(size: 48))
-                .foregroundColor(.accentColor)
+                .foregroundColor(micGranted && axGranted ? .green : .accentColor)
 
-            Text("Two permissions needed")
+            Text(micGranted && axGranted ? "Permissions granted ✓" : "Two permissions needed")
                 .font(.title2.bold())
 
             VStack(alignment: .leading, spacing: 12) {
@@ -231,10 +237,11 @@ struct OnboardingView: View {
                     icon: "mic.fill",
                     title: "Microphone",
                     description: "To capture your voice while recording.",
+                    granted: micGranted,
                     action: {
-                        NSWorkspace.shared.open(
-                            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!
-                        )
+                        AVCaptureDevice.requestAccess(for: .audio) { granted in
+                            DispatchQueue.main.async { micGranted = granted }
+                        }
                     }
                 )
 
@@ -242,9 +249,14 @@ struct OnboardingView: View {
                     icon: "accessibility",
                     title: "Accessibility",
                     description: "To type text automatically in any app.",
+                    granted: axGranted,
                     action: {
                         let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true]
                         _ = AXIsProcessTrustedWithOptions(options)
+                        // Verificar novamente após 1s (utilizador pode ter concedido)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                            axGranted = AXIsProcessTrusted()
+                        }
                         NSWorkspace.shared.open(
                             URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
                         )
@@ -253,10 +265,18 @@ struct OnboardingView: View {
             }
             .frame(maxWidth: 400)
 
-            Text("Both can be granted on the next screen — macOS will prompt you.")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            if micGranted && axGranted {
+                Text("All set — you can continue.")
+                    .font(.caption)
+                    .foregroundColor(.green)
+            } else {
+                Text("Grant access so Spit can record and type for you.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
         }
+        // Re-verificar permissões ao voltar a este passo (utilizador pode ter concedido em System Settings)
+        .onAppear { refreshPermissionStatus() }
     }
 
     // MARK: - Step 3: Ready
@@ -299,26 +319,35 @@ struct OnboardingView: View {
         .foregroundColor(.accentColor)
     }
 
-    private func permissionRow(icon: String, title: String, description: String, action: @escaping () -> Void) -> some View {
+    private func permissionRow(icon: String, title: String, description: String,
+                               granted: Bool, action: @escaping () -> Void) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon)
+            Image(systemName: granted ? "checkmark.circle.fill" : icon)
                 .font(.title3)
-                .foregroundColor(.accentColor)
+                .foregroundColor(granted ? .green : .accentColor)
                 .frame(width: 28)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).fontWeight(.semibold)
-                Text(description).font(.caption).foregroundColor(.secondary)
+                Text(granted ? "Permission granted" : description)
+                    .font(.caption)
+                    .foregroundColor(granted ? .green : .secondary)
             }
 
             Spacer()
 
-            Button("Grant") { action() }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+            if granted {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                    .font(.title3)
+            } else {
+                Button("Grant") { action() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
         }
         .padding(12)
-        .background(Color.secondary.opacity(0.07))
+        .background(granted ? Color.green.opacity(0.07) : Color.secondary.opacity(0.07))
         .cornerRadius(10)
     }
 
@@ -330,6 +359,13 @@ struct OnboardingView: View {
                 .frame(width: 16)
             Text(text).font(.caption).foregroundColor(.secondary)
         }
+    }
+
+    // MARK: - Permissions helpers
+
+    private func refreshPermissionStatus() {
+        micGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+        axGranted  = AXIsProcessTrusted()
     }
 
     // MARK: - Navigation
