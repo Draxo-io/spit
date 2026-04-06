@@ -14,6 +14,7 @@ struct OnboardingView: View {
     @State private var apiKeyInput: String = ""
     @State private var apiKeySaved: Bool = false
     @State private var apiKeyError: Bool = false
+    @State private var hasExistingKey: Bool = false   // chave já guardada no Keychain
     @EnvironmentObject var creditsManager: CreditsManager
 
     private let totalSteps = 4
@@ -74,6 +75,13 @@ struct OnboardingView: View {
             .padding(.bottom, 28)
         }
         .frame(width: 520, height: 420)
+        .onAppear {
+            // Se já existe chave no Keychain (reinstalação / upgrade), pré-validar
+            if creditsManager.hasUserAPIKey {
+                hasExistingKey = true
+                apiKeySaved = true
+            }
+        }
     }
 
     // MARK: - Step 0: Welcome
@@ -106,55 +114,104 @@ struct OnboardingView: View {
 
     private var stepAPIKey: some View {
         VStack(spacing: 16) {
-            Image(systemName: "key.fill")
+            Image(systemName: hasExistingKey && apiKeySaved && apiKeyInput.isEmpty ? "checkmark.shield.fill" : "key.fill")
                 .font(.system(size: 48))
-                .foregroundColor(.accentColor)
+                .foregroundColor(hasExistingKey && apiKeySaved && apiKeyInput.isEmpty ? .green : .accentColor)
 
             Text("Your OpenAI API Key")
                 .font(.title2.bold())
 
-            Text("Spit uses OpenAI's Whisper to transcribe your voice.\nYou'll need a free API key — your audio never goes through our servers.")
-                .font(.body)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
+            if hasExistingKey && apiKeySaved && apiKeyInput.isEmpty {
+                // Chave existente encontrada — não forçar nova entrada
+                VStack(spacing: 12) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+                        Text("API key already configured")
+                            .fontWeight(.semibold)
+                            .foregroundColor(.green)
+                    }
+                    Text("Your existing key was found securely stored in the Keychain.\nYou can continue or replace it with a new one.")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    SecureField("sk-proj-...", text: $apiKeyInput)
-                        .textFieldStyle(.roundedBorder)
-                        .onChange(of: apiKeyInput) { _ in
-                            apiKeyError = false
-                            apiKeySaved = false
+                    // Opção de substituir a chave
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            SecureField("Replace with new key (optional)", text: $apiKeyInput)
+                                .textFieldStyle(.roundedBorder)
+                                .onChange(of: apiKeyInput) { _ in
+                                    apiKeyError = false
+                                    // Se começou a escrever, a chave "guardada" é a nova
+                                    if !apiKeyInput.isEmpty { apiKeySaved = false }
+                                }
+
+                            Button("Save") {
+                                if creditsManager.activateUserKey(apiKeyInput) {
+                                    apiKeySaved = true
+                                    apiKeyInput = ""
+                                } else {
+                                    apiKeyError = true
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(apiKeyInput.count < 10)
                         }
 
-                    Button("Save") {
-                        if creditsManager.activateUserKey(apiKeyInput) {
-                            apiKeySaved = true
-                            apiKeyInput = ""
-                        } else {
-                            apiKeyError = true
+                        if apiKeyError {
+                            Label("Could not save key. Please try again.", systemImage: "xmark.circle")
+                                .font(.caption)
+                                .foregroundColor(.red)
                         }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(apiKeyInput.count < 10)
+                    .frame(maxWidth: 380)
                 }
+            } else {
+                // Sem chave — fluxo normal de configuração
+                Text("Spit uses OpenAI's Whisper to transcribe your voice.\nYou'll need a free API key — your audio never goes through our servers.")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
 
-                if apiKeySaved {
-                    Label("Key saved securely in Keychain ✓", systemImage: "checkmark.shield.fill")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                } else if apiKeyError {
-                    Label("Could not save key. Please try again.", systemImage: "xmark.circle")
-                        .font(.caption)
-                        .foregroundColor(.red)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        SecureField("sk-proj-...", text: $apiKeyInput)
+                            .textFieldStyle(.roundedBorder)
+                            .onChange(of: apiKeyInput) { _ in
+                                apiKeyError = false
+                                apiKeySaved = false
+                            }
+
+                        Button("Save") {
+                            if creditsManager.activateUserKey(apiKeyInput) {
+                                apiKeySaved = true
+                                apiKeyInput = ""
+                            } else {
+                                apiKeyError = true
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(apiKeyInput.count < 10)
+                    }
+
+                    if apiKeySaved {
+                        Label("Key saved securely in Keychain ✓", systemImage: "checkmark.shield.fill")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                    } else if apiKeyError {
+                        Label("Could not save key. Please try again.", systemImage: "xmark.circle")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
                 }
+                .frame(maxWidth: 380)
+
+                Link("Get your free key at platform.openai.com →",
+                     destination: URL(string: "https://platform.openai.com/api-keys")!)
+                    .font(.caption)
             }
-            .frame(maxWidth: 380)
-
-            Link("Get your free key at platform.openai.com →",
-                 destination: URL(string: "https://platform.openai.com/api-keys")!)
-                .font(.caption)
         }
     }
 
