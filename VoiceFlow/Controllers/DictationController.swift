@@ -352,7 +352,7 @@ class DictationController: ObservableObject {
 
         } catch let error as WhisperError {
             RecordingHUDWindowController.shared.dismiss()
-            showError(error.localizedDescription ?? "Unknown error")
+            showError(error.localizedDescription)
         } catch {
             RecordingHUDWindowController.shared.dismiss()
             showError("Unexpected error: \(error.localizedDescription)")

@@ -101,9 +101,11 @@ class MenuBarController: NSObject {
     private func startBlinking() {
         blinkTimer?.invalidate()
         blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
-            guard let self = self, let button = self.statusItem.button else { return }
-            self.blinkState.toggle()
-            button.alphaValue = self.blinkState ? 1.0 : 0.3
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let button = self.statusItem.button else { return }
+                self.blinkState.toggle()
+                button.alphaValue = self.blinkState ? 1.0 : 0.3
+            }
         }
     }
 
