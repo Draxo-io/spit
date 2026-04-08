@@ -79,9 +79,18 @@ struct ReviewHUDView: View {
             scheduleAutoDismiss(after: 8)
         }
         .onChange(of: isEditing) { editing in
-            if editing {
-                // User opened the editor — cancel any pending auto-dismiss
+            // User opened the editor — cancel any pending auto-dismiss
+            autoDismissToken = UUID()
+        }
+        .onHover { isHovered in
+            if isHovered {
+                // Mouse entered — cancel pending auto-dismiss while user is reading
                 autoDismissToken = UUID()
+            } else {
+                // Mouse left — restart the timer (unless editing)
+                if !isEditing {
+                    scheduleAutoDismiss(after: 8)
+                }
             }
         }
     }

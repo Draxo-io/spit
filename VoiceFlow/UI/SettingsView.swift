@@ -94,6 +94,9 @@ struct SettingsView: View {
     @State private var groqKeyInput: String = ""
     @State private var groqKeyMasked: Bool = true
     @State private var showGroqKeySavedAlert = false
+    @State private var llmKeyInput: String = ""
+    @State private var llmKeyMasked: Bool = true
+    @State private var showLLMKeySavedAlert = false
     @State private var newVocabWrong = ""
     @State private var newVocabCorrect = ""
     @State private var newHintTerm = ""
@@ -107,12 +110,6 @@ struct SettingsView: View {
     @State private var shortcutEventMonitor: Any? = nil
     @State private var shortcutGlobeMonitor: Any? = nil   // flagsChanged para Globe
     @State private var shortcutConflict: String? = nil
-
-    // PTT shortcut recorder state
-    @State private var isRecordingPTT = false
-    @State private var pttEventMonitor: Any? = nil
-    @State private var pttGlobeMonitor: Any? = nil         // flagsChanged para Globe
-    @State private var pttConflict: String? = nil
 
     // TTS Read Selection shortcut recorder state
     @State private var isRecordingTTS = false
@@ -525,6 +522,26 @@ struct SettingsView: View {
 
                 Toggle("Warn when no active text field", isOn: $settings.autoDetectFocus)
                     .onChange(of: settings.autoDetectFocus) { _ in save() }
+
+                Toggle(isOn: $settings.autoparagraphEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Auto-format paragraphs")
+                            .fontWeight(.medium)
+                        let available = settings.transcriptionEngine == .cloud ||
+                            !KeychainManager.shared.hasKey(for: settings.byokProvider) == false
+                        Text(available
+                             ? "LLM post-processing adds paragraphs and punctuation (uses STT key)."
+                             : "Requires an OpenAI or Groq API key.")
+                            .font(.caption)
+                            .foregroundColor(available ? .secondary : .orange)
+                    }
+                }
+                .onChange(of: settings.autoparagraphEnabled) { _ in save() }
+                .disabled({
+                    // Disabled if BYOK and no key present
+                    if settings.transcriptionEngine == .cloud { return false }
+                    return !KeychainManager.shared.hasKey(for: settings.byokProvider)
+                }())
             }
 
             Section("Auto-stop on Silence") {
@@ -554,7 +571,7 @@ struct SettingsView: View {
 
             Section("Keyboard Shortcut") {
                 shortcutRow
-                pttSection
+                smartHotkeyInfo
             }
 
             Section {
@@ -798,11 +815,17 @@ struct SettingsView: View {
                 .padding(.vertical, 4)
             }
 
+            // ── LLM key para formatação (só quando STT é local) ──────────
+            if settings.transcriptionEngine == .local {
+                llmKeySection
+            }
+
             Spacer()
         }
         .padding()
         .alert("Key saved!", isPresented: $showApiKeySavedAlert) { Button("OK") {} }
         .alert("Groq key saved!", isPresented: $showGroqKeySavedAlert) { Button("OK") {} }
+        .alert("LLM key saved!", isPresented: $showLLMKeySavedAlert) { Button("OK") {} }
     }
 
     @ViewBuilder
@@ -846,6 +869,49 @@ struct SettingsView: View {
 
             Link("Get your key →", destination: docsURL)
                 .font(.caption)
+        }
+    }
+
+    // MARK: - LLM Key Section (local STT only)
+
+    private var llmKeySection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 8) {
+                    Image(systemName: "cpu.fill")
+                        .foregroundColor(.purple)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("LLM para formatação de parágrafos")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Necessário para a função \"Auto-format paragraphs\" quando usas IA local (sem chave STT).")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                let hasKey = KeychainManager.shared.getString(account: "spit-llm-key") != nil
+                byokKeySection(
+                    label: "OpenAI ou Groq key",
+                    placeholder: "sk-... ou gsk_...",
+                    prefix: "sk-",   // Accept both prefixes — save unconditionally
+                    keyInput: $llmKeyInput,
+                    masked: $llmKeyMasked,
+                    hasSavedKey: hasKey,
+                    costLabel: "Aceita chaves OpenAI (sk-...) ou Groq (gsk_...). Utiliza GPT-4o-mini ou llama-3.1-8b-instant.",
+                    docsURL: URL(string: "https://platform.openai.com/api-keys")!,
+                    onSave: {
+                        let trimmed = llmKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else { return }
+                        KeychainManager.shared.saveString(trimmed, account: "spit-llm-key")
+                        showLLMKeySavedAlert = true
+                        llmKeyInput = ""
+                    },
+                    onRemove: {
+                        KeychainManager.shared.deleteString(account: "spit-llm-key")
+                    }
+                )
+            }
+            .padding(.vertical, 4)
         }
     }
 
@@ -1151,55 +1217,26 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - PTT Section
+    // MARK: - Smart Hotkey Info
 
-    private var pttSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    /// Inline explanation of the unified PTT+Toggle behavior (replaces the old PTT toggle)
+    private var smartHotkeyInfo: some View {
+        VStack(alignment: .leading, spacing: 6) {
             Divider().padding(.vertical, 2)
-
-            Toggle(isOn: $settings.pttEnabled) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Push-to-talk")
+            Label {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Smart tap + hold")
                         .fontWeight(.medium)
-                    Text("Hold the dictation key → record. Release → transcribe.")
+                    Text("Tap quickly → toggle recording on/off.\nHold ≥ 0.5s → push-to-talk: records while held, stops on release.")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-            }
-            .onChange(of: settings.pttEnabled) { enabled in
-                save()
-                dictationController.updatePTT(enabled: enabled)
-            }
-
-            // Mostrar a tecla activa (a mesma do toggle) em modo leitura
-            if settings.pttEnabled {
-                HStack(spacing: 4) {
-                    Text("Key:")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    let mods = modifierSymbols(settings.hotkeyModifiers)
-                    let key  = keyLabel(settings.hotkeyKeyCode)
-                    ForEach(Array(mods.enumerated()), id: \.offset) { _, ch in
-                        keyBadge(String(ch))
-                    }
-                    keyBadge(key)
-                    Text("(same as dictation shortcut)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.top, 2)
+            } icon: {
+                Image(systemName: "hand.tap.fill")
+                    .foregroundColor(.accentColor)
             }
         }
-    }
-
-    // pttShortcutRow removido — PTT usa a mesma tecla do toggle
-
-    // PTT Recording removido — PTT usa sempre a mesma tecla do toggle (hotkeyKeyCode/Modifiers)
-
-    private func stopRecordingPTTShortcut() {
-        isRecordingPTT = false
-        if let m = pttEventMonitor { NSEvent.removeMonitor(m); pttEventMonitor = nil }
-        if let m = pttGlobeMonitor { NSEvent.removeMonitor(m); pttGlobeMonitor = nil }
     }
 
     // MARK: - TTS Read Selection Section

@@ -50,6 +50,11 @@
 		C3E5F7A9B1D3E5F7A9C1E3F5 /* ProxyTranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F6A8B0C2E4F6A8B0D2E4F6 /* ProxyTranscriptionService.swift */; };
 		E5F7A9B1C3E5F7A9B1D3E5F7 /* LicenseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A8B0C2D4F6A8B0C2E4F6A8 /* LicenseManager.swift */; };
 		A7C9E1F3B5D7A9C1E3F5B7D9 /* TTSService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9D1E3F5A7C9E1F3B5D7A9C1 /* TTSService.swift */; };
+		01D8E9E5B4EF481298E9A772 /* ReadingHUDView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D225B5BC5C848CF901B2B3D /* ReadingHUDView.swift */; };
+		83B0390A22E24EDC9B0BEB4B /* ReadingHUDWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36844CA943FF403D8E541BAD /* ReadingHUDWindowController.swift */; };
+		C6AB4AE5F51C42C09C3D59C6 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FF83AE619A24B58AD2D6BE6 /* NetworkMonitor.swift */; };
+		ADEBC0E658044137B9FC6360 /* TextFormattingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8E762AF26DB49169722DC51 /* TextFormattingService.swift */; };
+		15F72AA71EEB43289FA04A1C /* TranslationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76C1361BC8F4470BA884747F /* TranslationService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -96,6 +101,11 @@
 		D4F6A8B0C2E4F6A8B0D2E4F6 /* ProxyTranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyTranscriptionService.swift; sourceTree = "<group>"; };
 		F6A8B0C2D4F6A8B0C2E4F6A8 /* LicenseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseManager.swift; sourceTree = "<group>"; };
 		B9D1E3F5A7C9E1F3B5D7A9C1 /* TTSService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TTSService.swift; sourceTree = "<group>"; };
+		2D225B5BC5C848CF901B2B3D /* ReadingHUDView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingHUDView.swift; sourceTree = "<group>"; };
+		36844CA943FF403D8E541BAD /* ReadingHUDWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingHUDWindowController.swift; sourceTree = "<group>"; };
+		3FF83AE619A24B58AD2D6BE6 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
+		A8E762AF26DB49169722DC51 /* TextFormattingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextFormattingService.swift; sourceTree = "<group>"; };
+		76C1361BC8F4470BA884747F /* TranslationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -139,6 +149,9 @@
 				B2D4F6A8C0E2F4A6B8D0E2F4 /* LocalWhisperService.swift */,
 				D4F6A8B0C2E4F6A8B0D2E4F6 /* ProxyTranscriptionService.swift */,
 				B9D1E3F5A7C9E1F3B5D7A9C1 /* TTSService.swift */,
+				76C1361BC8F4470BA884747F /* TranslationService.swift */,
+				A8E762AF26DB49169722DC51 /* TextFormattingService.swift */,
+				3FF83AE619A24B58AD2D6BE6 /* NetworkMonitor.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -182,6 +195,8 @@
 				DD44EE55FF001100220033B0 /* OnboardingWindowController.swift */,
 				CECAD5F23BD27F548C218A78 /* RecordingHUDView.swift */,
 				818F80C30C4A908B2DAFDB19 /* RecordingHUDWindowController.swift */,
+				36844CA943FF403D8E541BAD /* ReadingHUDWindowController.swift */,
+				2D225B5BC5C848CF901B2B3D /* ReadingHUDView.swift */,
 				E91675D2E2B233361518EF77 /* ReviewHUDView.swift */,
 				12AB48E5869A9BB3CF004DD3 /* ReviewHUDWindowController.swift */,
 				D424C882FA5E5D34ED2E061E /* SettingsView.swift */,
@@ -353,6 +368,11 @@
 				EE55FF001100220033440012 /* AboutView.swift in Sources */,
 				FF00112233445566778800C0 /* StoreKitManager.swift in Sources */,
 				84F6FF0A6FCB9286F2C9A354 /* RecordingHUDView.swift in Sources */,
+								01D8E9E5B4EF481298E9A772 /* ReadingHUDView.swift in Sources */,
+				83B0390A22E24EDC9B0BEB4B /* ReadingHUDWindowController.swift in Sources */,
+				C6AB4AE5F51C42C09C3D59C6 /* NetworkMonitor.swift in Sources */,
+				ADEBC0E658044137B9FC6360 /* TextFormattingService.swift in Sources */,
+				15F72AA71EEB43289FA04A1C /* TranslationService.swift in Sources */,
 				CA255FEFADCAFD3CD4055C34 /* RecordingHUDWindowController.swift in Sources */,
 				D9FAB33C8EAB788477C8BC97 /* ReviewHUDView.swift in Sources */,
 				53CE8F64775FB8BEE9ED249D /* ReviewHUDWindowController.swift in Sources */,

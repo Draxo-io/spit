@@ -8,20 +8,30 @@ import CoreGraphics
 //   1. kAXSelectedTextAttribute via Accessibility API (nativo, sem clipboard)
 //   2. Fallback: simula Cmd+C e lê o clipboard (funciona em qualquer app)
 
-final class TTSService: NSObject {
+final class TTSService: NSObject, ObservableObject {
 
     static let shared = TTSService()
 
     private let synthesizer: NSSpeechSynthesizer
-    private(set) var isSpeaking = false
+
+    @Published private(set) var isSpeaking = false
+    @Published private(set) var isPaused = false
+    @Published private(set) var speedMultiplier: Float = 1.0
 
     /// "" = voz padrão do sistema
     var voiceIdentifier: String = ""
+
+    /// Default rate from the synthesizer — captured once at init
+    private var baseRate: Float = 175.0
 
     private override init() {
         synthesizer = NSSpeechSynthesizer()
         super.init()
         synthesizer.delegate = self
+        // Capture the default rate for the system voice
+        if let rate = (try? synthesizer.object(forProperty: .rate)) as? Float {
+            baseRate = rate
+        }
     }
 
     // MARK: - Public
@@ -30,8 +40,7 @@ final class TTSService: NSObject {
         vfLog("TTSService.speakSelection() called")
 
         if synthesizer.isSpeaking {
-            synthesizer.stopSpeaking()
-            isSpeaking = false
+            stop()
             return
         }
 
@@ -55,18 +64,59 @@ final class TTSService: NSObject {
 
     func speak(_ text: String) {
         if synthesizer.isSpeaking { synthesizer.stopSpeaking() }
-        if voiceIdentifier.isEmpty {
-            synthesizer.setVoice(nil)
-        } else {
-            synthesizer.setVoice(NSSpeechSynthesizer.VoiceName(rawValue: voiceIdentifier))
-        }
+        applyVoiceAndRate()
         isSpeaking = synthesizer.startSpeaking(text)
-        vfLog("TTSService — startSpeaking:\(isSpeaking) voice:\(voiceIdentifier.isEmpty ? "system" : voiceIdentifier)")
+        isPaused = false
+        vfLog("TTSService — startSpeaking:\(isSpeaking) voice:\(voiceIdentifier.isEmpty ? "system" : voiceIdentifier) speed:\(speedMultiplier)x")
+        if isSpeaking {
+            DispatchQueue.main.async { ReadingHUDWindowController.shared.show() }
+        }
     }
 
     func stop() {
         synthesizer.stopSpeaking()
         isSpeaking = false
+        isPaused = false
+        DispatchQueue.main.async { ReadingHUDWindowController.shared.dismiss() }
+    }
+
+    func pause() {
+        guard isSpeaking && !isPaused else { return }
+        synthesizer.pauseSpeaking(at: .wordBoundary)
+        isPaused = true
+        vfLog("TTSService — paused")
+    }
+
+    func resume() {
+        guard isSpeaking && isPaused else { return }
+        synthesizer.continueSpeaking()
+        isPaused = false
+        vfLog("TTSService — resumed")
+    }
+
+    func setSpeed(_ multiplier: Float) {
+        speedMultiplier = multiplier
+        if isSpeaking {
+            try? synthesizer.setObject(NSNumber(value: baseRate * multiplier), forProperty: .rate)
+        }
+        vfLog("TTSService — speed set to \(multiplier)x (rate: \(baseRate * multiplier))")
+    }
+
+    // MARK: - Private helpers
+
+    private func applyVoiceAndRate() {
+        if voiceIdentifier.isEmpty {
+            synthesizer.setVoice(nil)
+        } else {
+            synthesizer.setVoice(NSSpeechSynthesizer.VoiceName(rawValue: voiceIdentifier))
+        }
+        // Apply speed — update baseRate for the (potentially new) voice
+        if let rate = (try? synthesizer.object(forProperty: .rate)) as? Float {
+            baseRate = rate
+        }
+        if speedMultiplier != 1.0 {
+            try? synthesizer.setObject(NSNumber(value: baseRate * speedMultiplier), forProperty: .rate)
+        }
     }
 
     // MARK: - Obter texto selecionado
@@ -107,6 +157,10 @@ final class TTSService: NSObject {
 
 extension TTSService: NSSpeechSynthesizerDelegate {
     func speechSynthesizer(_ sender: NSSpeechSynthesizer, didFinishSpeaking finishedSpeaking: Bool) {
-        DispatchQueue.main.async { [weak self] in self?.isSpeaking = false }
+        DispatchQueue.main.async { [weak self] in
+            self?.isSpeaking = false
+            self?.isPaused = false
+            ReadingHUDWindowController.shared.dismiss()
+        }
     }
 }

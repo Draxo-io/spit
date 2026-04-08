@@ -41,6 +41,9 @@ class DictationController: ObservableObject {
     private var pendingDictationAfterLoad = false
     private var modelReadyCancellable: AnyCancellable?
 
+    /// Smart hotkey timing — start of current keyDown press
+    private var hotkeyPressStart: Date?
+
     /// Last language detected by Whisper (e.g. "pt", "en") — used for live preview on next recording.
     /// Only populated when settings.language == "auto".
     private var lastDetectedLanguage: String?
@@ -110,7 +113,6 @@ class DictationController: ObservableObject {
 
     func teardown() {
         hotkeyManager.unregister()
-        hotkeyManager.unregisterPTT()
         hotkeyManager.unregisterTTS()
         audioRecorder.stopRecording()
     }
@@ -119,74 +121,76 @@ class DictationController: ObservableObject {
 
     private func setupHotkey() {
         let settings = loadSettings()
-        if settings.pttEnabled {
-            // PTT usa a mesma tecla que o toggle — não registar toggle para evitar conflito
-            setupPTT(keyCode: settings.hotkeyKeyCode, modifiers: settings.hotkeyModifiers)
-        } else {
-            hotkeyManager.register(keyCode: settings.hotkeyKeyCode, modifiers: settings.hotkeyModifiers)
-            hotkeyManager.onHotkeyPressed = { [weak self] in
-                vfLog("onHotkeyPressed callback fired!")
-                Task { @MainActor in self?.handleHotkeyPressed() }
+        hotkeyManager.register(keyCode: settings.hotkeyKeyCode, modifiers: settings.hotkeyModifiers)
+
+        // Smart PTT+Toggle: keyDown = always start if idle / stop if recording
+        hotkeyManager.onSmartKeyDown = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.hotkeyPressStart = Date()
+                vfLog("Smart keyDown — state: \(self.state)")
+                switch self.state {
+                case .idle:
+                    self.startDictation()
+                case .recording:
+                    self.stopDictation()
+                case .processing, .injecting:
+                    break
+                case .error:
+                    self.state = .idle
+                }
             }
         }
-        vfLog("Hotkey setup — keyCode:\(settings.hotkeyKeyCode) modifiers:\(settings.hotkeyModifiers) ptt:\(settings.pttEnabled)")
+
+        // Smart PTT+Toggle: keyUp — if held ≥ 500ms and still recording, stop (PTT release)
+        hotkeyManager.onSmartKeyUp = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                let held = Date().timeIntervalSince(self.hotkeyPressStart ?? Date()) * 1000
+                vfLog("Smart keyUp — held: \(Int(held))ms, state: \(self.state)")
+                if self.state == .recording && held >= AppSettings.pttThresholdMs {
+                    vfLog("PTT release — stopping dictation")
+                    self.stopDictation()
+                }
+            }
+        }
+        vfLog("Smart hotkey setup — keyCode:\(settings.hotkeyKeyCode) modifiers:\(settings.hotkeyModifiers)")
     }
 
-    private func setupPTT(keyCode: UInt32, modifiers: UInt32) {
-        hotkeyManager.registerPTT(keyCode: keyCode, modifiers: modifiers)
-        hotkeyManager.onPTTKeyDown = { [weak self] in
-            Task { @MainActor in
-                guard let self, self.state == .idle else { return }
-                vfLog("PTT keyDown — starting dictation")
-                self.startDictation()
-            }
-        }
-        hotkeyManager.onPTTKeyUp = { [weak self] in
-            Task { @MainActor in
-                guard let self, self.state == .recording else { return }
-                vfLog("PTT keyUp — stopping dictation")
-                self.stopDictation()
-            }
-        }
-    }
-
-    // MARK: - Update Hotkey / PTT (called from SettingsView)
+    // MARK: - Update Hotkey (called from SettingsView)
 
     func updateHotkey(keyCode: UInt32, modifiers: UInt32) {
         var settings = loadSettings()
         settings.hotkeyKeyCode = keyCode
         settings.hotkeyModifiers = modifiers
         saveSettings(settings)
-
-        if settings.pttEnabled {
-            // PTT usa a mesma tecla — actualizar o registo PTT
-            hotkeyManager.unregisterPTT()
-            setupPTT(keyCode: keyCode, modifiers: modifiers)
-        } else {
-            hotkeyManager.register(keyCode: keyCode, modifiers: modifiers)
-        }
+        hotkeyManager.register(keyCode: keyCode, modifiers: modifiers)
+        setupHotkeyCallbacks()
         vfLog("Hotkey updated — keyCode:\(keyCode) modifiers:\(modifiers)")
     }
 
-    func updatePTT(enabled: Bool) {
-        var settings = loadSettings()
-        settings.pttEnabled = enabled
-        saveSettings(settings)
-
-        if enabled {
-            // Activar PTT: desregistar toggle e registar PTT na mesma tecla
-            hotkeyManager.unregister()
-            setupPTT(keyCode: settings.hotkeyKeyCode, modifiers: settings.hotkeyModifiers)
-        } else {
-            // Desactivar PTT: desregistar PTT e voltar ao toggle
-            hotkeyManager.unregisterPTT()
-            hotkeyManager.register(keyCode: settings.hotkeyKeyCode, modifiers: settings.hotkeyModifiers)
-            hotkeyManager.onHotkeyPressed = { [weak self] in
-                vfLog("onHotkeyPressed callback fired!")
-                Task { @MainActor in self?.handleHotkeyPressed() }
+    private func setupHotkeyCallbacks() {
+        hotkeyManager.onSmartKeyDown = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.hotkeyPressStart = Date()
+                switch self.state {
+                case .idle:      self.startDictation()
+                case .recording: self.stopDictation()
+                case .error:     self.state = .idle
+                default: break
+                }
             }
         }
-        vfLog("PTT updated — enabled:\(enabled)")
+        hotkeyManager.onSmartKeyUp = { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                let held = Date().timeIntervalSince(self.hotkeyPressStart ?? Date()) * 1000
+                if self.state == .recording && held >= AppSettings.pttThresholdMs {
+                    self.stopDictation()
+                }
+            }
+        }
     }
 
     // MARK: - Queue Dictation While Model Loads
@@ -262,23 +266,6 @@ class DictationController: ObservableObject {
                 print("[DictationController] Dispositivo alterado durante gravação")
                 // Continua a gravar — AVAudioEngine adapta-se automaticamente ao novo device
             }
-        }
-    }
-
-    // MARK: - Hotkey Handler
-
-    func handleHotkeyPressed() {
-        vfLog("handleHotkeyPressed() — current state: \(state)")
-        switch state {
-        case .idle:
-            startDictation()
-        case .recording:
-            stopDictation()
-        case .processing, .injecting:
-            // Ignorar — aguardar conclusão
-            break
-        case .error:
-            state = .idle
         }
     }
 
@@ -500,12 +487,31 @@ class DictationController: ObservableObject {
             // Aplicar substituições de vocabulário
             text = vocabularyManager.apply(to: text)
 
-            // Adicionar ponto final se o texto não termina com pontuação.
-            // Garante separação correcta quando o utilizador abre uma nova sessão
-            // num campo que já tem texto (ex.: carta, email, nota).
-            let terminalPunctuation: Set<Character> = [".", "!", "?", "…", ":", ";", ",", "\"", "'", "»", ")"]
-            if let last = text.last, !terminalPunctuation.contains(last) {
-                text += "."
+            // LLM paragraph auto-formatting (optional, requires API key)
+            if settings.autoparagraphEnabled {
+                if let formatted = await TextFormattingService.shared.format(text, settings: settings) {
+                    text = formatted
+                }
+            }
+
+            // Adicionar ponto final se o texto não termina com pontuação
+            // (only when LLM formatting is off — LLM already handles punctuation)
+            if !settings.autoparagraphEnabled {
+                let terminalPunctuation: Set<Character> = [".", "!", "?", "…", ":", ";", ",", "\"", "'", "»", ")"]
+                if let last = text.last, !terminalPunctuation.contains(last) {
+                    text += "."
+                }
+            }
+
+            // Auto-translate if enabled
+            if settings.autoTranslateEnabled, !settings.autoTranslateTargetLanguage.isEmpty {
+                if let translated = await TranslationService.shared.translate(
+                    text,
+                    to: settings.autoTranslateTargetLanguage,
+                    settings: settings
+                ) {
+                    text = translated
+                }
             }
 
             guard !text.isEmpty else {

@@ -32,16 +32,22 @@ struct AboutView: View {
                 .padding(.horizontal, 40)
 
             VStack(spacing: 10) {
-                Link("Website — getspit.app", destination: URL(string: "https://getspit.app")!)
+                Link("Website", destination: URL(string: "https://getspit.app")!)
                     .font(.subheadline)
 
-                Link("Privacy Policy", destination: URL(string: "https://getspit.app/privacy")!)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                HStack(spacing: 20) {
+                    Link("Changelog", destination: URL(string: "https://getspit.app/changelog")!)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
 
-                Link("Support", destination: URL(string: "https://getspit.app/support")!)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    Link("Privacy", destination: URL(string: "https://getspit.app/privacy")!)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    Link("Support", destination: URL(string: "https://getspit.app/support")!)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
 
             Divider()

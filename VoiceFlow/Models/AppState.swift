@@ -64,13 +64,21 @@ struct AppSettings: Codable {
     var silenceAutoStopEnabled: Bool = true
     var silenceAutoStopSeconds: Double = 2.0  // seconds of silence before auto-stopping
 
-    // Push-to-talk
-    var pttEnabled: Bool = false
-    var pttKeyCode: UInt32 = 96     // F5
-    var pttModifiers: UInt32 = 0    // sem modificadores por defeito
+    // Push-to-talk threshold — unified PTT+Toggle, always active, not configurable
+    // tap < pttThresholdMs ms = toggle, hold ≥ pttThresholdMs ms = PTT
+    static let pttThresholdMs: Double = 500
 
     // Interface language: "system" = follow OS, otherwise BCP-47 tag (e.g. "pt", "en", "fr")
     var interfaceLanguage: String = "system"
+
+    // Paragraph auto-formatting (LLM post-processing)
+    var autoparagraphEnabled: Bool = true
+
+    // Quick-access language in popup
+    var dictationLanguage: String = "auto"
+    var ttsLanguage: String = "auto"
+    var autoTranslateEnabled: Bool = false
+    var autoTranslateTargetLanguage: String = "en"
 
     // Local transcription
     var transcriptionEngine: TranscriptionEngine = .cloud
