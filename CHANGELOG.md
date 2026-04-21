@@ -8,6 +8,31 @@ Ordem: mais recente em cima.
 
 ---
 
+## 2026-04-21 — TranslationService aceitava alucinações do LLM como tradução
+
+**Ficheiros**: `Services/TranslationService.swift`
+
+**Sintoma**: Utilizador ditou "faz resumo das minhas acções, qual o preço médio…" (Português, 187 chars). O ReviewHUD mostrou "Traduzido:" com um resumo fabricado com números inventados (R$ 10.000,00, R$ 20.000,00, 100 acções — nada disto estava no áudio). Output veio em Português apesar do target ser `en`.
+
+**Causa raiz**: O LLM do proxy `/translate` (Groq/servidor) por vezes ignora a instrução de tradução e interpreta o texto como **prompt**, gerando uma resposta. O cliente (`TranslationService.swift`) não tinha qualquer validação — aceitava qualquer string não-vazia como tradução válida.
+
+Contraste: `TextFormattingService` já tinha guard de comprimento (rejeitou o seu próprio output de 550 chars neste mesmo ciclo — ver log), mas o padrão não tinha sido replicado no `TranslationService`.
+
+**Fix**: Novo método `isPlausibleTranslation(source:translated:target:)` com dois guards:
+1. **Length guard**: rejeita se `output.length / source.length > 1.8`. Traduções legítimas entre línguas Latinas raramente passam de 1.5×.
+2. **Language guard**: `NLLanguageRecognizer` confirma que o output está na língua-alvo (confiança ≥ 0.75). Se detecta outra língua com alta confiança, rejeita.
+
+Quando qualquer guard falha, `translate()` retorna `nil`. O `DictationController` trata isto como "serviço indisponível" — cola o texto original e mostra banner "Translation service unavailable" no ReviewHUD.
+
+**Lição**: Qualquer chamada a LLM pode resultar em alucinação. Sempre validar o output do lado do cliente:
+- Comprimento (output não deveria ser muito maior que input para tradução/formatação)
+- Língua (para tradução)
+- Conteúdo (para formatação: não pode introduzir factos novos)
+
+Seguir o padrão do `TextFormattingService` quando se adicionar qualquer novo serviço baseado em LLM.
+
+---
+
 ## 2026-04-21 — Globe abria Apple Music quando nada estava a tocar
 
 **Ficheiros**: `Services/SystemAudioManager.swift`
