@@ -2,9 +2,37 @@
 
 > App macOS de ditado e leitura por voz. Menu bar app. Funciona com trial gerido por nós (cloud) ou com chave de API própria (BYOK). Motor de transcrição local disponível (offline, gratuito, ilimitado).
 
+| | |
+|---|---|
+| **Versão da spec** | v1.2 |
+| **Última revisão** | 2026-04-21 |
+| **Estado geral** | Fase 1 + 2 completas · Fase 3 em curso |
+| **Docs relacionados** | [`ARCHITECTURE.md`](ARCHITECTURE.md) · [`SPEC-AUTH.md`](SPEC-AUTH.md) · [`CHANGELOG.md`](CHANGELOG.md) |
+
+Cada secção tem tag de estado: **✅** implementado · **🚧** parcial · **📋** planeado.
+
 ---
 
-## 1. Posicionamento
+## 0. Glossário
+
+| Termo | Significado |
+|---|---|
+| **AX** | Accessibility API do macOS — usada para detectar campo em foco e injectar texto directamente. |
+| **BYOK** | Bring Your Own Key — modo em que o utilizador fornece a sua própria chave de API (OpenAI, Groq, Cartesia, etc.) em vez de usar o proxy da Spit. |
+| **HUD** | Heads-Up Display — overlay flutuante sobre o ecrã (ex.: HUD de gravação, HUD de leitura, ReviewHUD). |
+| **LED (icon)** | Indicador visual no ícone do menu bar — verde/amarelo/vermelho consoante o estado do serviço. |
+| **LLM** | Large Language Model — usado para formatação (parágrafo automático, email) e tradução em alguns providers. |
+| **PTT** | Push-to-Talk — manter a hotkey pressionada enquanto fala, largar para parar. |
+| **Proxy** | Backend da Spit que reencaminha pedidos para Groq; usado em trial e pro plans. |
+| **ReviewHUD** | Painel de revisão pós-transcrição — permite copiar, editar, ou corrigir vocabulário. |
+| **STT** | Speech-to-Text — transcrição de voz para texto (Whisper). |
+| **Toggle** | Premir a hotkey uma vez para começar, outra para parar (oposto de PTT). |
+| **TTS** | Text-to-Speech — leitura de texto em voz alta. |
+| **Whisper** | Modelo da OpenAI para STT. Também disponível via Groq e localmente via WhisperKit. |
+
+---
+
+## 1. Posicionamento ✅
 
 - Beta UI
 - Excelente usabilidade
@@ -16,7 +44,7 @@
 
 ---
 
-## 2. Planos
+## 2. Planos 🚧
 
 | Plano | Preço | Notas |
 |-------|-------|-------|
@@ -26,7 +54,7 @@
 
 ---
 
-## 3. Menu Bar — Lojamarca da Spit
+## 3. Menu Bar — Logomarca da Spit 🚧
 
 Popup principal do app, acessível pelo ícone na barra de menus do macOS.
 
@@ -113,7 +141,7 @@ Estado exibido com ícone colorido + explicação textual curta.
 
 ---
 
-## 4. Preferências (Settings)
+## 4. Preferências (Settings) ✅
 
 ### 4.1 Geral ⚙️
 
@@ -319,7 +347,7 @@ Cada funcionalidade depende de um serviço. Se o serviço não estiver configura
 
 ### 4.8 Sobre
 
-- Logótipo / Lojamarca
+- Logótipo / Logomarca
 - Versão: `1.0.0 (build X)`
 - Slogan
 - [`getspit.app`](https://getspit.app)
@@ -330,7 +358,7 @@ Cada funcionalidade depende de um serviço. Se o serviço não estiver configura
 
 ---
 
-## 5. HUD de Ditado
+## 5. HUD de Ditado ✅
 
 *Overlay flutuante exibido enquanto o app está a gravar.*
 
@@ -342,7 +370,7 @@ Cada funcionalidade depende de um serviço. Se o serviço não estiver configura
 
 ---
 
-## 6. HUD de Leitura
+## 6. HUD de Leitura ✅
 
 *Overlay flutuante exibido enquanto o app está a reproduzir.*
 
@@ -353,7 +381,7 @@ Cada funcionalidade depende de um serviço. Se o serviço não estiver configura
 
 ---
 
-## 7. Painel de Confirmação de Ditado
+## 7. Painel de Confirmação de Ditado ✅
 
 *Painel sobreposto ao ecrã, exibido após a transcrição ser concluída.*
 
@@ -378,7 +406,7 @@ Cada funcionalidade depende de um serviço. Se o serviço não estiver configura
 
 ---
 
-## 8. Onboarding
+## 8. Onboarding ✅
 
 *Sequência exibida na primeira abertura do app.*
 
@@ -421,7 +449,7 @@ Cada funcionalidade depende de um serviço. Se o serviço não estiver configura
 
 ---
 
-## 9. Regras de Negócio e Notas de Implementação
+## 9. Regras de Negócio e Notas de Implementação ✅
 
 ### Motor Local (WhisperKit)
 - Não consome minutos de trial
@@ -455,6 +483,8 @@ Cada funcionalidade depende de um serviço. Se o serviço não estiver configura
 ---
 
 ## 10. Plano de Implementação
+
+> **Status actual (2026-04-21):** Fase 1 ✅ · Fase 2 ✅ · Fase 3 🚧 · Fase 4 📋
 
 ### Fase 1 — Pré-lançamento *(sem isto não vende)*
 1. **Onboarding** — substituir fluxo atual (API key) pelo novo de 7 passos com magic link

@@ -1,79 +1,97 @@
-# VoiceFlow
+# Spit
 
-App macOS de ditação por voz com Whisper API.
+> App macOS de ditado e leitura por voz. Menu bar app. Privacidade-first com modo local offline disponível.
 
-## Estrutura do Projecto
+**Status:** beta · macOS 13+ · Made in EU
 
-```
-VoiceFlow/
-├── App/
-│   ├── VoiceFlowApp.swift          # Entry point (@main)
-│   └── AppDelegate.swift           # Lifecycle, permissões
-├── Controllers/
-│   ├── DictationController.swift   # State machine principal
-│   └── MenuBarController.swift     # Menu bar + popover
-├── Services/
-│   ├── HotkeyManager.swift         # Atalho global (Carbon API)
-│   ├── AudioRecorder.swift         # Gravação (AVAudioEngine)
-│   ├── WhisperService.swift        # OpenAI Whisper API
-│   ├── FocusDetector.swift         # Detecção de campo activo (AX)
-│   └── TextInjector.swift          # Injecção de texto (AX + clipboard)
-├── Managers/
-│   ├── VocabularyManager.swift     # Substituições personalizadas
-│   ├── CreditsManager.swift        # Free trial + BYOK
-│   └── KeychainManager.swift       # API key segura
-├── UI/
-│   ├── MenuBarPopoverView.swift    # Popover da menu bar
-│   ├── SettingsView.swift          # Janela de definições
-│   ├── ReviewHUDView.swift         # HUD de revisão pós-ditação
-│   └── ReviewHUDWindowController.swift
-├── Models/
-│   └── AppState.swift              # Modelos de dados
-└── Resources/
-    ├── Info.plist
-    └── VoiceFlow.entitlements
-```
+## Features principais
 
-## Como Compilar
+- 🎙 **Ditado por voz** com Whisper — cloud (trial/pro, via proxy Groq) ou local (offline, ilimitado)
+- 🔊 **Leitura em voz alta** (TTS) com Cartesia/OpenAI
+- 🌍 **Tradução automática** pós-transcrição
+- 🧠 **Parágrafo automático** via LLM (reutiliza a chave STT)
+- 📝 **Vocabulário pessoal** — substituições + prompt hints
+- 🎛 **Smart hotkey** unificada: tap = toggle, hold = PTT
+- 🔒 **BYOK** (bring your own key) — OpenAI, Groq, Cartesia, DeepL, etc.
+- 🎵 **Pausa automática** de Spotify/Music/browsers durante ditado
+
+## Instalação
+
+- **App Store:** [getspit.app](https://getspit.app) *(em preparação)*
+- **Download directo:** [getspit.app/download](https://getspit.app) *(em preparação)*
+- **Build local:** ver secção abaixo.
+
+## Build local
 
 ### Pré-requisitos
-- Xcode 15+
-- XcodeGen: `brew install xcodegen`
 
-### Gerar projecto Xcode
+- macOS 13.0 (Ventura) ou superior
+- Xcode 15.0+
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen): `brew install xcodegen`
+- Apple Developer Team ID (só necessário para code signing local)
+
+### Passos
+
 ```bash
-cd /Users/rafaellopes/projects/VoiceFlow
+git clone <este-repo>
+cd VoiceFlow
+
+# Gerar projecto Xcode a partir de project.yml
 xcodegen generate
-open VoiceFlow.xcodeproj
+
+# Editar project.yml e definir o DEVELOPMENT_TEAM
+# (ou abrir em Xcode e escolher o team manualmente)
+
+# Build + run
+xcodebuild -scheme VoiceFlow -configuration Debug -destination 'platform=macOS' build
+open ~/Library/Developer/Xcode/DerivedData/VoiceFlow-*/Build/Products/Debug/Spit.app
 ```
 
-### Configuração antes de compilar
-1. Abre o `project.yml` e define o teu `DEVELOPMENT_TEAM`
-2. Para o free trial, adiciona a chave do developer no `Info.plist` → `VF_DEV_API_KEY`
-3. Para desenvolvimento local, desactiva o App Sandbox no `.entitlements`
+Em desenvolvimento, usa o slash command `/rebuild` (definido em `.claude/commands/rebuild.md`)
+para automatizar o ciclo completo.
 
-## Fluxo de Estados
+## Stack técnico
 
-```
-idle ──hotkey──▶ recording ──hotkey──▶ processing ──▶ injecting ──▶ idle
-                                                                      ▲
-                                                              ReviewHUD (opcional)
-```
+- **Linguagem:** Swift 5.9, SwiftUI + AppKit
+- **Áudio:** `AVAudioEngine` + `SFSpeechRecognizer` (live preview)
+- **Hotkey global:** `CGEventTap` (Globe 🌐) + `NSEvent` monitors (outras teclas)
+- **Transcrição:** OpenAI Whisper API · Groq Whisper · [WhisperKit](https://github.com/argmaxinc/WhisperKit) local
+- **TTS:** Cartesia Sonic · OpenAI TTS · `AVSpeechSynthesizer` (fallback)
+- **Licenciamento:** proxy backend + JWT; BYOK via Keychain
+- **Dependências externas:** **zero** — só SDK Apple + WhisperKit (local)
 
-## Decisões de Distribuição
+## Documentação para developers
 
-| Canal | Sandbox | AX Injection | Nota |
-|-------|---------|--------------|------|
-| App Store | Obrigatório | ❌ (apenas clipboard) | Mais fácil de aprovar |
-| Website directo | Opcional | ✅ | Mais funcionalidades |
+| Ficheiro | O que contém |
+|---|---|
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Visão geral de arquitectura e decisões de design |
+| [`SPEC.md`](SPEC.md) | Especificação funcional do produto |
+| [`SPEC-AUTH.md`](SPEC-AUTH.md) | Licenciamento, trial, proxy, BYOK |
+| [`CHANGELOG.md`](CHANGELOG.md) | Histórico de bugs com causa raiz |
+| [`CLAUDE.md`](CLAUDE.md) | Instruções para agentes Claude (rebuild, debugging, regras) |
+| `.claude/rules/*.md` | Regras scoped por ficheiro/área |
 
-**Recomendação MVP:** Distribuir pelo website com clipboard fallback first,
-depois submeter à App Store sem injecção AX.
+## Privacidade
 
-## Notas Técnicas
+- **Modo local:** zero rede. Áudio nunca sai do dispositivo.
+- **Modo cloud (proxy):** áudio é transmitido encriptado para o nosso proxy, que
+  reencaminha para Groq. Áudio e transcrições não são guardados depois da
+  resposta.
+- **Modo BYOK:** áudio vai directamente para o provider que escolheres
+  (OpenAI/Groq/etc.) com a tua chave. Aplicam-se as políticas deles.
+- **App Sandbox** sempre activo. Entitlements mínimos: mic, network client.
 
-- **Hotkey:** Carbon `RegisterEventHotKey` — funciona sistema-wide sem Accessibility
-- **Áudio:** AVAudioEngine com mono 16kHz — óptimo para Whisper
-- **Whisper prompt:** Vocabulário pessoal passado como `prompt` → melhora reconhecimento de nomes
-- **Keychain:** API key nunca em UserDefaults — sempre em Keychain
-- **Free trial:** Rastreado em UserDefaults (minutos) — não requer servidor
+## License
+
+Por definir. *(Em consideração: abertura OSS depois da v1.0.)*
+
+## Acknowledgments
+
+- [OpenAI Whisper](https://github.com/openai/whisper) — speech recognition models
+- [WhisperKit](https://github.com/argmaxinc/WhisperKit) — on-device inference
+- [Groq](https://groq.com) — fast cloud inference
+- [Cartesia](https://cartesia.ai) — TTS
+
+---
+
+*Spit is built with care in the EU.*
