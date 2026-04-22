@@ -8,6 +8,22 @@ Ordem: mais recente em cima.
 
 ---
 
+## 2026-04-22 — TextFormattingService aceitava truncagens do LLM como formatação
+
+**Ficheiros**: `Services/TextFormattingService.swift`
+
+**Sintoma**: Utilizador ditou um pedido de ~70 palavras começando por "ajude-me a montar texto super simples para eu colar na mensagem do WhatsApp..." com um template de duas linhas no fim. O "Texto final" no ReviewHUD veio com **apenas 16 palavras** — o template sem o pedido de ajuda.
+
+**Causa raiz**: O LLM do proxy `/format` interpretou o texto como **instrução para si próprio** ("ajude-me a montar…") em vez de o formatar. Devolveu só o template final, descartando o contexto.
+
+O `isSuspiciousOutput` tinha dois gates — (1) char ratio > 2.5× e (2) word count > input+3 — ambos focados em **expansão/alucinação**. Nenhum apanhava **truncamento**.
+
+**Fix**: Adicionado terceiro gate — rejeita output com < 70% das palavras do input (só para inputs ≥ 10 palavras, para evitar falsos positivos em frases curtas). Neste caso 16/70 = 23% → rejeitado → `DictationController` usa o texto original do Whisper.
+
+**Lição**: Gates anti-alucinação têm de ser **bi-direccionais** (expansão e contracção). Qualquer operação de "formatar / limpar / estruturar" LLM tem risco do modelo interpretar o input como prompt. Replicar este gate no `TranslationService` também (onde apenas temos gate de expansão 1.8×).
+
+---
+
 ## 2026-04-21 — TranslationService aceitava alucinações do LLM como tradução
 
 **Ficheiros**: `Services/TranslationService.swift`
