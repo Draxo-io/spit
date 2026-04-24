@@ -47,8 +47,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         requestAccessibilityPermission()
         LiveSpeechRecognizer.requestPermission()
 
+        // Crash reporting — detect .ips files from previous crashes and ship to back-office
+        CrashReporter.shared.checkAndReport()
+
+        // Telemetry — ping de primeiro lançamento (device info anónimo)
+        TelemetryService.shared.pingIfNeeded()
+
         // Onboarding — mostrar apenas na primeira execução
         OnboardingWindowController.shared.showIfNeeded()
+
+        // Update checker — verifica actualizações 5s após launch, depois cada 24h
+        UpdateChecker.shared.startChecking()
 
         vfLog("applicationDidFinishLaunching — DONE ✅")
     }
@@ -57,22 +66,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         dictationController?.teardown()
     }
 
-    // MARK: - URL Scheme: spit://activate?token=xxx
+    // MARK: - URL Scheme: spit://activate?token=xxx  |  spit://auth?jwt=xxx
 
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
             guard url.scheme == "spit",
-                  url.host == "activate",
-                  let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-                  let token = components.queryItems?.first(where: { $0.name == "token" })?.value
+                  let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
             else { continue }
 
-            vfLog("Deep link activation — token: \(token.prefix(8))…")
-            Task { @MainActor in
-                await handleActivation(token: token)
+            if url.host == "activate",
+               let token = components.queryItems?.first(where: { $0.name == "token" })?.value {
+                vfLog("Deep link activation — token: \(token.prefix(8))…")
+                Task { @MainActor in
+                    await handleActivation(token: token)
+                }
+            } else if url.host == "auth",
+                      let jwt = components.queryItems?.first(where: { $0.name == "jwt" })?.value {
+                vfLog("Deep link auth — JWT received (\(jwt.count) chars)")
+                Task { await AuthManager.shared.handleDeepLink(jwt: jwt) }
             }
         }
     }
+
 
     @MainActor
     private func handleActivation(token: String) async {
@@ -134,28 +149,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         vfLog("Accessibility: NOT trusted — requesting...")
 
-        // Trigger the system prompt
+        // Trigger the macOS system permission prompt (shows the system dialog directly).
+        // We intentionally do NOT change NSApp.setActivationPolicy here — switching to
+        // .regular and back to .accessory destroys the NSStatusItem on macOS 13+, leaving
+        // the app running but invisible. The system prompt is explanation enough; a
+        // UNUserNotification provides the extra context without the side-effect.
         let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true]
         _ = AXIsProcessTrustedWithOptions(options)
 
-        // Show explanatory alert
+        // Secondary notification with extra instructions (non-modal, no activation policy change)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            let alert = NSAlert()
-            alert.messageText = String(localized: "Accessibility Permission Required")
-            alert.informativeText = String(localized: "accessibility.permission.body",
-                defaultValue: "Spit needs Accessibility permission to paste text automatically.\n\n1. Open System Settings → Privacy & Security → Accessibility\n2. Toggle Spit ON (remove and re-add if it was already there)\n3. Restart Spit")
-            alert.alertStyle = .informational
-            alert.addButton(withTitle: String(localized: "Open Settings"))
-            alert.addButton(withTitle: String(localized: "Later"))
-
-            NSApp.setActivationPolicy(.regular)
-            NSApp.activate(ignoringOtherApps: true)
-
-            if alert.runModal() == .alertFirstButtonReturn {
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-            }
-
-            NSApp.setActivationPolicy(.accessory)
+            self.sendNotification(
+                title: String(localized: "Accessibility Permission Required"),
+                body: String(localized: "accessibility.permission.body",
+                    defaultValue: "Spit needs Accessibility to paste text automatically. Open System Settings → Privacy & Security → Accessibility and toggle Spit ON.")
+            )
         }
     }
 
