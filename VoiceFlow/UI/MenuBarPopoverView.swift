@@ -16,6 +16,7 @@ struct MenuBarPopoverView: View {
     @State private var now: Date = Date()
     @State private var isRefreshingLicense: Bool = false
     @State private var pendingUpdate: UpdateInfo? = nil
+    @State private var planChangeMessage: String? = nil
     private let timer = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
 
     private var lastResultVisible: Bool {
@@ -27,6 +28,7 @@ struct MenuBarPopoverView: View {
         VStack(spacing: 0) {
             headerView
             Divider()
+            planChangedBannerView      // banner verde quando o plano mudou server-side
             updateAvailableBannerView  // banner azul quando há nova versão
             accessibilityWarningView   // banner vermelho quando AX não está concedida
             offlineBannerView          // banner laranja quando sem internet (e a precisar dela)
@@ -47,9 +49,48 @@ struct MenuBarPopoverView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .onReceive(timer) { now = $0 }
-        .onAppear { now = Date() }  // garantir que `now` está actualizado quando o popover abre
+        .onAppear {
+            now = Date()
+            // Refresh forçado da conta cada vez que o popover abre — barato e
+            // garante que mudanças server-side (admin change_plan, webhook Lemon)
+            // se reflectem rapidamente.
+            Task { await AuthManager.shared.refreshAccount() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: UpdateChecker.updateAvailableNotification)) { note in
             pendingUpdate = note.userInfo?["info"] as? UpdateInfo
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AuthManager.planChangedNotification)) { note in
+            guard let oldPlan = note.userInfo?["oldPlan"] as? SpitPlan,
+                  let newPlan = note.userInfo?["newPlan"] as? SpitPlan else { return }
+            planChangeMessage = "Plano actualizado: \(oldPlan.rawValue) → \(newPlan.rawValue)"
+        }
+    }
+
+    // MARK: - Plan Changed Banner
+
+    @ViewBuilder
+    private var planChangedBannerView: some View {
+        if let msg = planChangeMessage {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                Text(msg)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.primary)
+                Spacer()
+                Button {
+                    planChangeMessage = nil
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.green.opacity(0.10))
+            Divider()
         }
     }
 
@@ -117,8 +158,8 @@ struct MenuBarPopoverView: View {
 
     private var consumoState: ConsumoState {
         switch licenseManager.plan {
-        case .byok: return .byok
-        case .pro:  return .proMonthly
+        case .byok, .lifetime: return .byok       // both = unlimited usage, no monthly cap
+        case .pro:             return .proMonthly
         case .trial:
             if !licenseManager.isActivated      { return .trialNotStarted }
             if licenseManager.trialExhausted    { return .trialExpired }
