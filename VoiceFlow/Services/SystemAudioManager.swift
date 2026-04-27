@@ -1,4 +1,5 @@
 import AppKit
+import CoreAudio
 import CoreGraphics
 import Foundation
 
@@ -81,27 +82,78 @@ final class SystemAudioManager {
 
     /// Pausa a media activa.
     ///
-    /// Estratégia:
-    ///   1. Verifica se existe um now-playing PID. Se não houver (0), NÃO envia
-    ///      play/pause — caso contrário o macOS captura o sinal e abre o Apple
-    ///      Music (app por defeito do media key).
-    ///   2. Se houver PID > 0, envia play/pause. Isto cobre o caso Bluetooth
-    ///      onde `isPlaying` retorna false erradamente mas o PID está correcto.
-    ///   3. `didPauseMedia` garante que só retomamos se fomos nós a pausar.
+    /// Estratégia (3 caminhos):
+    ///   1. **PID > 0** → app registado como now-playing controller (Spotify
+    ///      desktop, Apple Music, etc.). Caminho seguro e fiável.
+    ///   2. **PID = 0 mas output device a tocar** → áudio activo de fonte que
+    ///      não regista no MediaRemote (Chrome com YouTube Music / Google Music,
+    ///      browsers em geral). A presença de áudio garante que NÃO vamos abrir
+    ///      o Apple Music por engano (já há algum app a tocar).
+    ///   3. **PID = 0 e output em silêncio** → nada está a tocar. Skip para
+    ///      evitar que o macOS abra o Apple Music por defeito.
+    ///
+    /// `didPauseMedia` garante que só retomamos se fomos nós a pausar.
     func pauseMedia() async {
         guard !didPauseMedia, !isPausing else { return }
         isPausing = true
         defer { isPausing = false }
 
         let pid = await nowPlayingPID()
-        guard pid > 0 else {
-            vfLog("SystemAudioManager — no now-playing app (PID=0), skip pause to avoid launching Apple Music")
+        if pid > 0 {
+            sendPlayPauseKey()
+            didPauseMedia = true
+            vfLog("SystemAudioManager — media paused ▶→⏸ (pid:\(pid))")
             return
         }
 
-        sendPlayPauseKey()
-        didPauseMedia = true
-        vfLog("SystemAudioManager — media paused ▶→⏸ (pid:\(pid))")
+        // PID = 0 — fallback to output-device check
+        if isOutputDeviceActive() {
+            sendPlayPauseKey()
+            didPauseMedia = true
+            vfLog("SystemAudioManager — media paused ▶→⏸ (PID=0, output device active — likely browser/web player)")
+            return
+        }
+
+        vfLog("SystemAudioManager — no now-playing app (PID=0) and output silent, skip pause to avoid launching Apple Music")
+    }
+
+    /// Returns true if the default output device is actively producing audio.
+    /// Uses `kAudioDevicePropertyDeviceIsRunningSomewhere` — read-only, no
+    /// entitlements needed, returns within microseconds.
+    private func isOutputDeviceActive() -> Bool {
+        // Get the default output device ID
+        var deviceID: AudioDeviceID = 0
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var devAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let devStatus = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &devAddr, 0, nil, &size, &deviceID
+        )
+        guard devStatus == noErr, deviceID != 0 else {
+            vfLog("SystemAudioManager — could not get default output device (status:\(devStatus))")
+            return false
+        }
+
+        // Check if the device is running (audio is being played to it)
+        var isRunning: UInt32 = 0
+        var runSize = UInt32(MemoryLayout<UInt32>.size)
+        var runAddr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let runStatus = AudioObjectGetPropertyData(
+            deviceID, &runAddr, 0, nil, &runSize, &isRunning
+        )
+        guard runStatus == noErr else {
+            vfLog("SystemAudioManager — could not query device-is-running (status:\(runStatus))")
+            return false
+        }
+
+        return isRunning != 0
     }
 
     /// Retoma a media que foi pausada por pauseMedia(). Não faz nada se não pausámos.

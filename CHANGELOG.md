@@ -8,24 +8,39 @@ Ordem: mais recente em cima.
 
 ---
 
-## 2026-04-27 — Media keys não pausavam Chrome / web players
+## 2026-04-27 — Media keys não pausavam Chrome / web players (2 problemas)
 
 **Ficheiros**: `Services/SystemAudioManager.swift`
 
 **Sintoma**: Iniciar ditado com Google Music a tocar no Chrome não pausava
 a música. Spotify desktop e Apple Music sempre funcionaram.
 
-**Causa raiz**: `sendPlayPauseKey()` estava a injectar o NSEvent via
-`cgEvent.post(tap: .cgSessionEventTap)`. Este nível é **acima** do que
-Chrome/browsers/web players escutam — só apps "de sistema" o vêem.
+**Causa raiz dupla**:
 
-A tecla física F8 funciona em qualquer player porque chega ao
-`cghidEventTap` (nível mais baixo, próximo do hardware), e Chrome escuta
-explicitamente aí.
+1. **Routing da media key**: `sendPlayPauseKey()` injectava o NSEvent via
+   `cgEvent.post(tap: .cgSessionEventTap)`. Chrome/browsers/web players só
+   escutam ao nível HID (onde a tecla física F8 chega). `cgSessionEventTap`
+   é entregue acima e estes apps não o vêem.
 
-**Fix**: Trocar para `.cghidEventTap`. Replica exactamente o caminho da
-tecla física. A guard `PID > 0` mantém-se inalterada — continua a
-proteger contra abrir Apple Music quando nada está a tocar.
+2. **Guard `PID = 0` bloqueava antes de chegar à key**: Chrome com Google
+   Music não regista no `MRMediaRemoteGetNowPlayingApplicationPID` — PID
+   sempre 0 → guard fazia `skip` → key nunca era enviada. A fix do tap
+   sozinho era irrelevante.
+
+**Fix em duas camadas**:
+
+1. Trocar `.cgSessionEventTap` → `.cghidEventTap`. Replica exactamente o
+   caminho da tecla física para que Chrome/browsers vejam o evento.
+
+2. Quando `PID = 0`, fallback via Core Audio:
+   `kAudioDevicePropertyDeviceIsRunningSomewhere` no default output device.
+   Se há áudio a sair, é seguro pausar (já há um app a tocar — não vamos
+   abrir Apple Music). Se silencioso, manter o skip.
+
+Ordem de decisão actual:
+- PID > 0 → pausar (caminho rápido e fiável)
+- PID = 0 + output activo → pausar (cobre Chrome/web players)
+- PID = 0 + output silencioso → skip (preserva fix anti-Apple-Music)
 
 ---
 

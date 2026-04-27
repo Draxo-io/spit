@@ -54,6 +54,14 @@ Estas regras já custaram horas de debugging. **Não violar sem ler `CHANGELOG.m
   vêem. Spotify desktop, Apple Music e similares funcionam em ambos. Fix:
   2026-04-27 (Google Music em Chrome não pausava).
 
+- **Fallback para output device activo (Core Audio).** Chrome / browsers a
+  tocar via web frequentemente NÃO registam no MediaRemote — `nowPlayingPID`
+  retorna 0. Solução: quando PID = 0, verificar
+  `kAudioDevicePropertyDeviceIsRunningSomewhere` no default output device.
+  Se há áudio a sair, é seguro enviar play/pause (já há algum app a tocar,
+  não vamos abrir Apple Music). Se output silencioso, manter o skip
+  (preserva o fix anti-Apple-Music). Fix: 2026-04-27.
+
 ## LiveSpeechRecognizer
 
 - É o **single source of truth** para "voice detected" — campo `liveWordsSeen`
