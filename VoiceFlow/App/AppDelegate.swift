@@ -59,6 +59,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Update checker — verifica actualizações 5s após launch, depois cada 24h
         UpdateChecker.shared.startChecking()
 
+        // Pre-warm da conexão TCP/TLS para o proxy Spit. Sem isto, a primeira
+        // chamada a /translate ou /format paga handshake completo (~500ms-2s)
+        // que somado a um cold-start da Groq pode dar 502 → user vê tradução
+        // falhar na primeira ditação. Um GET /auth/me leve aquece a conexão.
+        Task.detached(priority: .background) {
+            let url = URL(string: "\(LicenseManager.apiBase)/auth/me")!
+            var req = URLRequest(url: url)
+            req.timeoutInterval = 5
+            req.httpMethod = "GET"
+            // Não precisa de auth válido — qualquer resposta (200 ou 401) já aquece
+            // a conexão. Estamos só interessados no handshake TCP+TLS.
+            _ = try? await URLSession.shared.data(for: req)
+            vfLog("[prewarm] connection to spit-api warmed")
+        }
+
         vfLog("applicationDidFinishLaunching — DONE ✅")
     }
 

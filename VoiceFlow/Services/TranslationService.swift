@@ -167,15 +167,19 @@ Text:
     // MARK: - Proxy-based translation (trial/pro)
 
     private func translateViaProxy(_ text: String, to targetLanguage: String) async -> String? {
-        // Retry once on transient 5xx errors (502/503/504 from overloaded upstream).
-        for attempt in 1...2 {
-            if let result = await translateViaProxyOnce(text, to: targetLanguage, attempt: attempt) {
-                return result
+        // Retry up to 3 times on transient 5xx errors. The Worker itself already
+        // retries 3× internally with exponential back-off — this is a second line
+        // of defence for cases where the Worker's retries are all exhausted
+        // (e.g. Groq sustained outage, or the first cold-start chain takes >30s).
+        // Back-off: 0ms, 1.2s, 3s.
+        let delays: [UInt64] = [0, 1_200_000_000, 3_000_000_000]
+        for (i, delay) in delays.enumerated() {
+            if delay > 0 {
+                vfLog("TranslationService — retrying after transient failure (attempt \(i + 1))")
+                try? await Task.sleep(nanoseconds: delay)
             }
-            // Only retry on first attempt; brief back-off before retry.
-            if attempt == 1 {
-                vfLog("TranslationService — retrying after transient failure (attempt \(attempt))")
-                try? await Task.sleep(nanoseconds: 600_000_000)  // 600ms
+            if let result = await translateViaProxyOnce(text, to: targetLanguage, attempt: i + 1) {
+                return result
             }
         }
         return nil
