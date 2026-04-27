@@ -12,15 +12,24 @@ O repo ainda se chama `VoiceFlow` por razões históricas — ignora essa incons
 
 App macOS menu-bar de ditado por voz com:
 - Hotkey global (por defeito Globe 🌐) para iniciar/parar ditado
-- Transcrição via Whisper (proxy Groq para trial/pro, BYOK OpenAI/Groq, ou local)
+- Transcrição via Whisper (proxy Groq/OpenIA para trial/pro, BYOK OpenAI/Groq, ou local)
 - Injecção de texto no app em foco (AX API, fallback clipboard+⌘V)
 - TTS (read selection) na mesma hotkey com comportamento "smart"
 - Live preview de palavras via `SFSpeechRecognizer` durante a gravação
-- Pausa/retoma media (Spotify, Apple Music, etc.) durante ditado
+- Pausa/retoma media (Spotify, Apple Music, etc.) durante ditado ou leitura caso esteja a reproduzir algo ao teclar o hotkey
 
 Para visão geral de arquitectura → `ARCHITECTURE.md`.
 Para spec funcional → `SPEC.md` e `SPEC-AUTH.md`.
 Para histórico de bugs corrigidos → `CHANGELOG.md`.
+
+> **Regra de auditoria**: quando o utilizador pedir para "rever / auditar /
+> verificar divergências" entre código e documentação, ler **todos** os
+> documentos listados acima (CLAUDE.md, CHANGELOG.md, ARCHITECTURE.md,
+> SPEC.md, SPEC-AUTH.md, `.claude/rules/*.md`). Nunca restringir a um
+> subset sem instrução explícita do utilizador. Cada um cobre uma camada
+> diferente (regras para agentes, lições de bugs, arquitectura interna,
+> spec funcional de produto, autenticação) e uma auditoria só é completa
+> quando cobre todas.
 
 ## Protocolo de rebuild (OBRIGATÓRIO após qualquer edit)
 
@@ -28,20 +37,21 @@ Usa o slash command `/rebuild` — é o caminho canónico. Corresponde a:
 
 ```bash
 kill $(pgrep Spit) 2>/dev/null
-cd /Users/rafaellopes/projects/VoiceFlow
-xcodebuild -scheme VoiceFlow -configuration Debug -destination 'platform=macOS' build
-open ~/Library/Developer/Xcode/DerivedData/VoiceFlow-aolpcvsxnunafqfwlrkmiotqesgm/Build/Products/Debug/Spit.app
+cd "/Users/rafaellopes/Library/CloudStorage/GoogleDrive-rafa@rafamail.com/Meu Drive/Empreendedorismo/Spit"
+xcodebuild -project VoiceFlow.xcodeproj -scheme VoiceFlow -configuration Debug -destination 'platform=macOS' build
+open ~/Library/Developer/Xcode/DerivedData/VoiceFlow-hfayfoyiaxzwzjdermhtiguqxtnn/Build/Products/Debug/Spit.app
 ```
 
 Não esperar que o utilizador peça — é automático.
+Avise o usuário depois e feito para que ele possa testar.
 
 ## Paths críticos
 
 | Artefacto | Path |
 |---|---|
-| Código fonte | `/Users/rafaellopes/projects/VoiceFlow/VoiceFlow/` |
-| DerivedData app | `~/Library/Developer/Xcode/DerivedData/VoiceFlow-aolpcvsxnunafqfwlrkmiotqesgm/Build/Products/Debug/Spit.app` |
-| **Debug log (runtime)** | `~/Library/Containers/app.getspit/Data/tmp/spit-debug.log` |
+| Código fonte | `/Users/rafaellopes/Library/CloudStorage/GoogleDrive-rafa@rafamail.com/Meu Drive/Empreendedorismo/Spit/VoiceFlow/` |
+| DerivedData app | `~/Library/Developer/Xcode/DerivedData/VoiceFlow-hfayfoyiaxzwzjdermhtiguqxtnn/Build/Products/Debug/Spit.app` |
+| **Debug log (runtime)** | `~/Library/Logs/Spit/spit-debug.log` |
 | Crash reports | `~/Library/Logs/DiagnosticReports/Spit-*.ips` |
 | Settings (UserDefaults) | `~/Library/Containers/app.getspit/Data/Library/Preferences/app.getspit.plist` |
 | Keychain service | `app.getspit` — chaves `byok.openai`, `byok.groq`, JWT de licença |
@@ -86,6 +96,28 @@ Edita-os **apenas** quando:
 
 **Não** editar para mudanças internas (refactor, fixes, performance). Usa
 `CHANGELOG.md` + nota Kogno para isso.
+
+### Regra de sincronização spec ↔ código (OBRIGATÓRIA)
+
+Sempre que for introduzida uma **nova especificação** ou **alterada uma já
+existente** — seja por pedido do utilizador ou por decisão tomada durante o
+trabalho que toque comportamento user-visible / regra de negócio / contrato
+de proxy — o agente **tem de**:
+
+1. **Parar** antes de implementar.
+2. **Avisar** o utilizador: identificar o que muda, em que secção do
+   `SPEC.md` (ou `SPEC-AUTH.md`) entra, e qual era o texto anterior se
+   aplicável.
+3. **Pedir autorização explícita** para actualizar a spec.
+4. Só após aprovação: actualizar o `.md` correspondente **primeiro**, e só
+   depois o código.
+
+Isto vale também no caminho inverso: se durante uma auditoria for detectada
+uma divergência onde o código está certo e a spec está desactualizada,
+propor a actualização da spec antes de fazer qualquer fix noutro lado.
+
+Nunca silenciosamente alinhar código e spec — a spec é o contrato visível
+ao utilizador e tem de ser revista por ele.
 
 ## Kogno — memória de agente
 
