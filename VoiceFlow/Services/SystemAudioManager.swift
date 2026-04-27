@@ -136,7 +136,12 @@ final class SystemAudioManager {
                 continue
             }
 
-            event.cgEvent?.post(tap: CGEventTapLocation.cgSessionEventTap)
+            // Inject at HID level (same as physical F8 keypress) so Chrome,
+            // browsers and other apps that only listen to hardware media keys
+            // also receive it. cgSessionEventTap is delivered higher up the
+            // chain and Chrome/web players don't see it — confirmed in
+            // production with Google Music in Chrome (2026-04-27).
+            event.cgEvent?.post(tap: CGEventTapLocation.cghidEventTap)
         }
     }
 }

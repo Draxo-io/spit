@@ -8,6 +8,55 @@ Ordem: mais recente em cima.
 
 ---
 
+## 2026-04-27 — Media keys não pausavam Chrome / web players
+
+**Ficheiros**: `Services/SystemAudioManager.swift`
+
+**Sintoma**: Iniciar ditado com Google Music a tocar no Chrome não pausava
+a música. Spotify desktop e Apple Music sempre funcionaram.
+
+**Causa raiz**: `sendPlayPauseKey()` estava a injectar o NSEvent via
+`cgEvent.post(tap: .cgSessionEventTap)`. Este nível é **acima** do que
+Chrome/browsers/web players escutam — só apps "de sistema" o vêem.
+
+A tecla física F8 funciona em qualquer player porque chega ao
+`cghidEventTap` (nível mais baixo, próximo do hardware), e Chrome escuta
+explicitamente aí.
+
+**Fix**: Trocar para `.cghidEventTap`. Replica exactamente o caminho da
+tecla física. A guard `PID > 0` mantém-se inalterada — continua a
+proteger contra abrir Apple Music quando nada está a tocar.
+
+---
+
+## 2026-04-22 — Alinhamento extenso com SPEC §3.6 · §4.1 · §7 · §8 (Histórico) · §4.7
+
+**Ficheiros**: `Models/AppState.swift`, `Managers/CreditsManager.swift`, `Controllers/DictationController.swift`, `Services/TTSService.swift`, `UI/MenuBarPopoverView.swift`, `UI/SettingsView.swift`, `UI/AboutView.swift`, `SPEC.md`
+
+**Contexto**: Auditoria minuciosa SPEC ↔ código revelou múltiplas divergências silenciosas. O utilizador tinha reescrito §3.6 Consumo e §4.2 Plano para definir 4 estados (BYOK / Trial ativo / Pro mensal / Trial expirado / Trial não iniciado) com rows 🎙 ditado + 🔊 leitura. O código mostrava apenas uma linha genérica, sem contador de TTS, sem CTA "Ative agora" para Trial não iniciado, e sem o CTA "Conheça os planos" literal.
+
+**Mudanças**:
+
+1. **CreditsManager** — adicionados counters `totalSecondsRead` / `monthlySecondsRead` + `recordTTS(seconds:)` + `recordTranscription(seconds:)` (este último estava a ser lido mas nunca escrito). Reset mensal com mesmo padrão YYYY-MM.
+2. **TTSService** — regista `playbackStartedAt` no início de AI/native playback e chama `recordTTS(seconds:)` em `onAIPlaybackFinished` + `speechSynthesizer didFinish`. Aborts < 0.5s ignorados.
+3. **DictationController** — `processRecording` agora chama `CreditsManager.recordTranscription(seconds:)` a seguir a `HistoryManager.add`.
+4. **MenuBarPopoverView** — refactor completo do `creditsView` num state-machine de 5 estados (`ConsumoState`); `freeTrialCTAView` agora cobre `trialExpired` ("Conheça os planos") e `trialNotStarted` ("Ative agora" → `OnboardingWindowController.shared.show()`).
+5. **SettingsView** — nova tab `Histórico` (SPEC-AUTH §9 posição 8) com lista dos 50 últimos ditados, copiar/apagar individual, botão limpar tudo.
+6. **AppState** — `launchAtLogin` default `true` (SPEC §4.1) · `reviewHUDInitialSeconds` `10 → 5` (SPEC §7) · schema version bumped to v2.
+7. **AboutView** — `© 2025` → `© 2026`.
+8. **Localização** — banner de acessibilidade, `"Press shortcut…"`, `"Add a modifier…"`, tooltips Settings/Quit migrados para `String(localized:)`.
+
+**Decisões registadas na SPEC**:
+- Ícones 🎙 / 🔊 mantidos como SF Symbols (`mic.fill` / `speaker.wave.2.fill`) em vez de emojis literais — consistência com macOS. Documentado em §3.6.
+- Separador `→` em vez de `=` na linha de value summary.
+- Linha "trial termina em DD/MM" omitida até backend passar a devolver `trial_end_date` / `pro_renewal_date`. Linha marcada como pendente na spec.
+- Limite de TTS para "minutos de leitura restantes": usa o mesmo cap do ditado (trial 60min, Pro 20h) enquanto backend não define quota dedicada.
+- §4.2 Plano (SettingsView) mantém UI mais rica que a spec literal (progress bar) — spec atualizada para reflectir.
+
+**Regra acrescentada ao `CLAUDE.md`**: qualquer spec nova ou alterada exige agora parar, avisar, pedir autorização, actualizar o `.md` **antes** do código. Evita alinhamentos silenciosos.
+
+---
+
 ## 2026-04-22 — TextFormattingService aceitava truncagens do LLM como formatação
 
 **Ficheiros**: `Services/TextFormattingService.swift`

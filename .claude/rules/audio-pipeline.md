@@ -47,6 +47,13 @@ Estas regras já custaram horas de debugging. **Não violar sem ler `CHANGELOG.m
   no `DictationController.stopDictation()`. Ordem inversa deixa burst de
   música no output do ficheiro gravado.
 
+- **`cgEvent.post(tap: .cghidEventTap)` — não trocar para `cgSessionEventTap`.**
+  Chrome, browsers e web players (YouTube Music, Google Music, Spotify Web)
+  só escutam media keys ao nível HID — exactamente o nível onde a tecla
+  física F8 chega. `cgSessionEventTap` é entregue acima e estes apps não a
+  vêem. Spotify desktop, Apple Music e similares funcionam em ambos. Fix:
+  2026-04-27 (Google Music em Chrome não pausava).
+
 ## LiveSpeechRecognizer
 
 - É o **single source of truth** para "voice detected" — campo `liveWordsSeen`
