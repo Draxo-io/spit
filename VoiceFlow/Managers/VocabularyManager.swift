@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 // MARK: - VocabularyManager
 // Gere substituições de palavras personalizadas.
@@ -57,20 +58,122 @@ class VocabularyManager: ObservableObject {
 
     // MARK: - Aplicar Substituições ao Texto
 
+    /// Aplica **apenas substituições inequívocas** (onde `wrong` não é palavra
+    /// real em PT/EN). Entradas ambíguas — onde `wrong` é uma palavra válida
+    /// (ex.: "mel", "casa", "para") — são reservadas para o LLM judge no
+    /// `TextFormattingService`, que decide com contexto se substitui ou não.
     func apply(to text: String) -> String {
         var result = text
-        for entry in entries where !entry.hintOnly {
-            if entry.caseSensitive {
-                result = result.replacingOccurrences(of: entry.wrong, with: entry.correct)
-            } else {
-                result = result.replacingOccurrences(
-                    of: entry.wrong,
-                    with: entry.correct,
-                    options: .caseInsensitive
-                )
-            }
+        for entry in unambiguousEntries() {
+            result = Self.replaceWholeWord(
+                in: result,
+                wrong: entry.wrong,
+                correct: entry.correct,
+                caseSensitive: entry.caseSensitive
+            )
         }
         return result
+    }
+
+    /// Substituições seguras para regex word-boundary: `wrong` não colide com
+    /// vocabulário comum (proper nouns, marcas, siglas).
+    func unambiguousEntries() -> [VocabularyEntry] {
+        entries.filter { !$0.hintOnly && !Self.isAmbiguous(wrong: $0.wrong) }
+    }
+
+    /// Substituições que precisam de julgamento contextual via LLM:
+    /// `wrong` é uma palavra real PT/EN. Substituir cegamente corrompe textos.
+    func ambiguousEntries() -> [VocabularyEntry] {
+        entries.filter { !$0.hintOnly && Self.isAmbiguous(wrong: $0.wrong) }
+    }
+
+    /// Determina se `wrong` é palavra real em PT ou EN (logo, ambígua).
+    /// Multi-word substitutions ("Rafa Lopes" → "Rafael Lopes") nunca são ambíguas.
+    static func isAmbiguous(wrong: String) -> Bool {
+        let trimmed = wrong.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        // Multi-palavra → improvável colidir → tratar como inequívoca
+        if trimmed.contains(where: { $0.isWhitespace }) { return false }
+        // Palavras muito curtas (1 char) → considerar ambíguas por segurança
+        if trimmed.count < 2 { return true }
+        return Self.isRealWord(trimmed)
+    }
+
+    private static let ambiguityCheckLanguages = ["pt", "en"]
+    private static var realWordCache: [String: Bool] = [:]
+
+    /// Usa NSSpellChecker em PT e EN para detectar se `word` é vocabulário real.
+    /// Cacheado em memória — chamadas para o spell-checker têm latência.
+    private static func isRealWord(_ word: String) -> Bool {
+        let key = word.lowercased()
+        if let cached = realWordCache[key] { return cached }
+
+        let checker = NSSpellChecker.shared
+        let originalLang = checker.language()
+        defer { _ = checker.setLanguage(originalLang) }
+
+        var isReal = false
+        for lang in ambiguityCheckLanguages {
+            _ = checker.setLanguage(lang)
+            let range = checker.checkSpelling(of: word, startingAt: 0)
+            // checkSpelling retorna NSNotFound (location) quando NÃO encontra
+            // erro — i.e., a palavra é reconhecida como válida nesse idioma.
+            if range.location == NSNotFound || range.length == 0 {
+                isReal = true
+                break
+            }
+        }
+        realWordCache[key] = isReal
+        return isReal
+    }
+
+    /// Substitui `wrong` por `correct` apenas quando ocorrer como **palavra inteira**
+    /// (rodeada por limites de palavra Unicode). Evita corromper palavras maiores
+    /// — ex.: substituir "mel" → "MEO" não pode tocar em "melhora", "amêndoa", etc.
+    ///
+    /// Usa `\b` Unicode-aware (NSRegularExpression em Swift trata `\b` como limite
+    /// entre `\w` e não-`\w`, e `\w` inclui letras acentuadas com option default).
+    /// Para casos onde `wrong` começa/termina com não-letra (ex.: "C++"), o `\b`
+    /// pode falhar — fallback para substituição literal nesse caso raro.
+    static func replaceWholeWord(
+        in text: String,
+        wrong: String,
+        correct: String,
+        caseSensitive: Bool
+    ) -> String {
+        let trimmed = wrong.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return text }
+
+        // Se o termo não começa nem termina com letra/dígito, \b não funciona —
+        // usar substituição literal (case-sensitive only para evitar surpresas).
+        let firstIsWord = trimmed.unicodeScalars.first.map { CharacterSet.alphanumerics.contains($0) } ?? false
+        let lastIsWord  = trimmed.unicodeScalars.last.map  { CharacterSet.alphanumerics.contains($0) } ?? false
+        guard firstIsWord && lastIsWord else {
+            return text.replacingOccurrences(
+                of: trimmed,
+                with: correct,
+                options: caseSensitive ? [] : .caseInsensitive
+            )
+        }
+
+        let escaped = NSRegularExpression.escapedPattern(for: trimmed)
+        let pattern = "\\b\(escaped)\\b"
+        var options: NSRegularExpression.Options = [.useUnicodeWordBoundaries]
+        if !caseSensitive { options.insert(.caseInsensitive) }
+
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else {
+            return text
+        }
+
+        let range = NSRange(text.startIndex..., in: text)
+        // Escapar `$` e `\` no template — `correct` é texto literal, não template.
+        let template = NSRegularExpression.escapedTemplate(for: correct)
+        return regex.stringByReplacingMatches(
+            in: text,
+            options: [],
+            range: range,
+            withTemplate: template
+        )
     }
 
     // MARK: - Gerar Prompt para Whisper

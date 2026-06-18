@@ -7,7 +7,11 @@ import Security
 class KeychainManager {
 
     static let shared = KeychainManager()
-    private let service = "com.rafaellopes.voiceflow"
+    private let service = "app.getspit.spit"
+
+    /// Legacy service name used before the app was renamed from VoiceFlow → Spit.
+    /// Kept only for one-time migration in getString — never write to this service.
+    private let legacyService = "com.rafaellopes.voiceflow"
     private let apiKeyAccount = "openai-api-key"
     private let groqKeyAccount = "groq-api-key"
 
@@ -89,19 +93,6 @@ class KeychainManager {
     func deleteGroqKey() { deleteString(account: groqKeyAccount) }
     var hasGroqKey: Bool { getGroqKey() != nil }
 
-    // MARK: - Key para provider genérico
-
-    func getKey(for provider: BYOKProvider) -> String? {
-        switch provider {
-        case .openai: return getAPIKey()
-        case .groq:   return getGroqKey()
-        }
-    }
-
-    func hasKey(for provider: BYOKProvider) -> Bool {
-        getKey(for: provider) != nil
-    }
-
     // MARK: - Generic string storage (used by LicenseManager for JWT, etc.)
 
     func saveString(_ value: String, account: String) {
@@ -117,9 +108,25 @@ class KeychainManager {
     }
 
     func getString(account: String) -> String? {
+        // Try current service first.
+        if let value = readFromService(service, account: account) { return value }
+
+        // One-time migration: if not found under current service, check the legacy
+        // service name ("com.rafaellopes.voiceflow") used before the app rename.
+        // If found there, re-save under the current service and delete the old entry.
+        if let value = readFromService(legacyService, account: account) {
+            saveString(value, account: account)          // write to current service
+            deleteFromService(legacyService, account: account)  // clean up old entry
+            return value
+        }
+
+        return nil
+    }
+
+    private func readFromService(_ svc: String, account: String) -> String? {
         let query: [CFString: Any] = [
             kSecClass:       kSecClassGenericPassword,
-            kSecAttrService: service,
+            kSecAttrService: svc,
             kSecAttrAccount: account,
             kSecReturnData:  true,
             kSecMatchLimit:  kSecMatchLimitOne
@@ -128,6 +135,15 @@ class KeychainManager {
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
               let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
+    }
+
+    private func deleteFromService(_ svc: String, account: String) {
+        let query: [CFString: Any] = [
+            kSecClass:       kSecClassGenericPassword,
+            kSecAttrService: svc,
+            kSecAttrAccount: account
+        ]
+        SecItemDelete(query as CFDictionary)
     }
 
     func deleteString(account: String) {

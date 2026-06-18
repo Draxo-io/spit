@@ -1,97 +1,94 @@
-# Spit
+# Spit — Voice Dictation for macOS
 
-> App macOS de ditado e leitura por voz. Menu bar app. Privacidade-first com modo local offline disponível.
+Free, open-source, 100% on-device voice dictation for Mac. No subscription, no cloud, no API keys.
 
-**Status:** beta · macOS 13+ · Made in EU
-
-## Features principais
-
-- 🎙 **Ditado por voz** com Whisper — cloud (trial/pro, via proxy Groq) ou local (offline, ilimitado)
-- 🔊 **Leitura em voz alta** (TTS) com Cartesia/OpenAI
-- 🌍 **Tradução automática** pós-transcrição
-- 🧠 **Parágrafo automático** via LLM (reutiliza a chave STT)
-- 📝 **Vocabulário pessoal** — substituições + prompt hints
-- 🎛 **Smart hotkey** unificada: tap = toggle, hold = PTT
-- 🔒 **BYOK** (bring your own key) — OpenAI, Groq, Cartesia, DeepL, etc.
-- 🎵 **Pausa automática** de Spotify/Music/browsers durante ditado
-
-## Instalação
-
-- **App Store:** [getspit.app](https://getspit.app) *(em preparação)*
-- **Download directo:** [getspit.app/download](https://getspit.app) *(em preparação)*
-- **Build local:** ver secção abaixo.
-
-## Build local
-
-### Pré-requisitos
-
-- macOS 13.0 (Ventura) ou superior
-- Xcode 15.0+
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen): `brew install xcodegen`
-- Apple Developer Team ID (só necessário para code signing local)
-
-### Passos
-
-```bash
-git clone <este-repo>
-cd VoiceFlow
-
-# Gerar projecto Xcode a partir de project.yml
-xcodegen generate
-
-# Editar project.yml e definir o DEVELOPMENT_TEAM
-# (ou abrir em Xcode e escolher o team manualmente)
-
-# Build + run
-xcodebuild -scheme VoiceFlow -configuration Debug -destination 'platform=macOS' build
-open ~/Library/Developer/Xcode/DerivedData/VoiceFlow-*/Build/Products/Debug/Spit.app
-```
-
-Em desenvolvimento, usa o slash command `/rebuild` (definido em `.claude/commands/rebuild.md`)
-para automatizar o ciclo completo.
-
-## Stack técnico
-
-- **Linguagem:** Swift 5.9, SwiftUI + AppKit
-- **Áudio:** `AVAudioEngine` + `SFSpeechRecognizer` (live preview)
-- **Hotkey global:** `CGEventTap` (Globe 🌐) + `NSEvent` monitors (outras teclas)
-- **Transcrição:** OpenAI Whisper API · Groq Whisper · [WhisperKit](https://github.com/argmaxinc/WhisperKit) local
-- **TTS:** Cartesia Sonic · OpenAI TTS · `AVSpeechSynthesizer` (fallback)
-- **Licenciamento:** proxy backend + JWT; BYOK via Keychain
-- **Dependências externas:** **zero** — só SDK Apple + WhisperKit (local)
-
-## Documentação para developers
-
-| Ficheiro | O que contém |
-|---|---|
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Visão geral de arquitectura e decisões de design |
-| [`SPEC.md`](SPEC.md) | Especificação funcional do produto |
-| [`SPEC-AUTH.md`](SPEC-AUTH.md) | Licenciamento, trial, proxy, BYOK |
-| [`CHANGELOG.md`](CHANGELOG.md) | Histórico de bugs com causa raiz |
-| [`CLAUDE.md`](CLAUDE.md) | Instruções para agentes Claude (rebuild, debugging, regras) |
-| `.claude/rules/*.md` | Regras scoped por ficheiro/área |
-
-## Privacidade
-
-- **Modo local:** zero rede. Áudio nunca sai do dispositivo.
-- **Modo cloud (proxy):** áudio é transmitido encriptado para o nosso proxy, que
-  reencaminha para Groq. Áudio e transcrições não são guardados depois da
-  resposta.
-- **Modo BYOK:** áudio vai directamente para o provider que escolheres
-  (OpenAI/Groq/etc.) com a tua chave. Aplicam-se as políticas deles.
-- **App Sandbox** sempre activo. Entitlements mínimos: mic, network client.
-
-## License
-
-Por definir. *(Em consideração: abertura OSS depois da v1.0.)*
-
-## Acknowledgments
-
-- [OpenAI Whisper](https://github.com/openai/whisper) — speech recognition models
-- [WhisperKit](https://github.com/argmaxinc/WhisperKit) — on-device inference
-- [Groq](https://groq.com) — fast cloud inference
-- [Cartesia](https://cartesia.ai) — TTS
+![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue)
+![Swift](https://img.shields.io/badge/Swift-5.9-orange)
+![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
 ---
 
-*Spit is built with care in the EU.*
+## Features
+
+- **Hotkey dictation** — tap the Globe key (🌐) to start/stop, or hold for push-to-talk
+- **On-device Whisper** — transcription via [WhisperKit](https://github.com/argmaxinc/WhisperKit), runs entirely on your Mac
+- **Live preview** — see words appear in real time via `SFSpeechRecognizer` while recording
+- **Text injection** — inserts transcribed text directly into any app via the Accessibility API (no clipboard pollution)
+- **Media pause** — automatically pauses Spotify, Apple Music, and web players during dictation
+- **Text formatting** — on-device LLM cleans up punctuation and paragraph breaks
+- **TTS (read selection)** — press the hotkey with text selected to have it read aloud via `AVSpeechSynthesizer`
+- **Vocabulary manager** — personal word substitutions and prompt hints for domain-specific terms
+- **Auto-translate** — post-transcription translation via macOS 15+ on-device Translation API
+
+## Requirements
+
+- macOS 14.0 (Sonoma) or later
+- Apple Silicon (M1 or newer) — required for on-device Whisper inference
+
+## Installation
+
+### Download (recommended)
+
+Download the latest release from the [Releases](https://github.com/rafaellopes/spit/releases) page and drag Spit.app to your Applications folder.
+
+### Build from source
+
+```bash
+git clone https://github.com/rafaellopes/spit.git
+cd spit
+
+# Build
+xcodebuild \
+  -project VoiceFlow.xcodeproj \
+  -scheme VoiceFlow \
+  -configuration Release \
+  -destination 'platform=macOS' \
+  build
+
+# Find the built app
+open ~/Library/Developer/Xcode/DerivedData/VoiceFlow-*/Build/Products/Release/Spit.app
+```
+
+Xcode 15+ is required. No other dependencies needed — the project uses only the Apple SDK and WhisperKit (fetched via Swift Package Manager).
+
+## How it works
+
+1. **Hotkey** — a global `CGEventTap` on the Globe key captures the trigger anywhere on macOS
+2. **Record** — `AVAudioEngine` captures microphone audio; `SFSpeechRecognizer` streams a live word preview
+3. **Transcribe** — on key release, the audio buffer is passed to WhisperKit for on-device inference
+4. **Inject** — the transcribed text is inserted at the cursor position using the macOS Accessibility API (`AXUIElement`), with a clipboard fallback (⌘V) for apps that don't support AX insertion
+
+Everything happens on your device. No network requests are made during normal operation.
+
+## Privacy
+
+Spit is designed to be privacy-first by default:
+
+- All audio is processed locally using on-device Whisper models (via WhisperKit)
+- No audio is ever transmitted to external servers
+- No account, email, or personal information is required
+- App Sandbox is always enabled with minimal entitlements (microphone + Accessibility)
+- No analytics, no telemetry, no tracking
+
+## Contributing
+
+Contributions are welcome. Please open an issue before submitting a large pull request so we can discuss the approach.
+
+1. Fork the repo and create a branch: `git checkout -b my-feature`
+2. Make your changes and verify the build: `xcodebuild -scheme VoiceFlow -configuration Debug build`
+3. Open a pull request with a clear description of what changed and why
+
+Bug reports with steps to reproduce are also very helpful.
+
+## License
+
+MIT — see [LICENSE](LICENSE) for the full text.
+
+## Acknowledgments
+
+- [WhisperKit](https://github.com/argmaxinc/WhisperKit) by Argmax — on-device Whisper inference for Apple Silicon
+- [OpenAI Whisper](https://github.com/openai/whisper) — the underlying speech recognition models
+
+---
+
+*Built with care in the EU.*

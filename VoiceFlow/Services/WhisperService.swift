@@ -1,8 +1,7 @@
 import Foundation
 
-// MARK: - WhisperService
-// Envia áudio para a OpenAI Whisper API e devolve o texto transcrito.
-// Suporta chave do utilizador (BYOK) e chave do developer (free trial).
+// MARK: - WhisperError
+// Shared error type used by LocalWhisperService and ProxyTranscriptionService.
 
 enum WhisperError: LocalizedError {
     case noAPIKey
@@ -39,21 +38,21 @@ enum WhisperError: LocalizedError {
     }
 }
 
-// Standard JSON response
+// MARK: - Shared response types
+
 struct WhisperResponse: Codable {
     let text: String
 }
 
-// Verbose JSON response — includes detected language (used when language = "auto")
 struct WhisperVerboseResponse: Codable {
     let text: String
-    let language: String?  // e.g. "portuguese", "english", "spanish"
+    let language: String?
 }
 
 // Result returned to callers — text + detected language as a locale identifier (e.g. "pt", "en")
 struct WhisperResult {
     let text: String
-    let detectedLanguage: String?  // nil if unknown or fixed language was specified
+    let detectedLanguage: String?
 
     /// Maps Whisper's full language name to an AppSettings-compatible locale string
     static func localeIdentifier(from whisperLanguage: String?) -> String? {
@@ -91,150 +90,13 @@ struct WhisperAPIError: Codable {
     let error: ErrorDetail
 }
 
+// MARK: - WhisperService
+// Stub — open-source v2.0. Cloud/BYOK transcription removed.
+// All transcription is handled by LocalWhisperService (on-device WhisperKit).
+
 class WhisperService {
-
-    private let devAPIKey: String? = nil  // Preencher antes de distribuir
-    private let apiURL = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
-    private let maxFileSizeBytes = 25 * 1024 * 1024  // 25 MB — limite Whisper
-
-    // MARK: - Transcrição com Vocabulário (método principal)
-    // Usa verbose_json quando language="auto" para obter idioma detectado.
-    // Retorna WhisperResult com texto e idioma detectado.
-
     func transcribe(audioURL: URL, language: String, apiKey: String, vocabularyHint: String,
                     endpoint: URL? = nil, model: String? = nil) async throws -> WhisperResult {
-        let fileSize = (try? audioURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        if fileSize > maxFileSizeBytes { throw WhisperError.fileTooLarge }
-
-        let boundary = "Spit-\(UUID().uuidString)"
-        var request = URLRequest(url: endpoint ?? apiURL)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 180
-
-        var body = Data()
-        let crlf = "\r\n"
-
-        let audioData = try Data(contentsOf: audioURL)
-        body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.m4a\"\(crlf)".data(using: .utf8)!)
-        body.append("Content-Type: audio/m4a\(crlf)\(crlf)".data(using: .utf8)!)
-        body.append(audioData)
-        body.append(crlf.data(using: .utf8)!)
-
-        body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"model\"\(crlf)\(crlf)".data(using: .utf8)!)
-        body.append("\(model ?? "whisper-1")\(crlf)".data(using: .utf8)!)
-
-        if !language.isEmpty && language != "auto" {
-            body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"language\"\(crlf)\(crlf)".data(using: .utf8)!)
-            body.append("\(language)\(crlf)".data(using: .utf8)!)
-        }
-
-        if !vocabularyHint.isEmpty {
-            body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"prompt\"\(crlf)\(crlf)".data(using: .utf8)!)
-            body.append("\(vocabularyHint)\(crlf)".data(using: .utf8)!)
-        }
-
-        // Use verbose_json when language is auto — response includes detected language field
-        let useVerbose = language == "auto"
-        body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"response_format\"\(crlf)\(crlf)".data(using: .utf8)!)
-        body.append("\(useVerbose ? "verbose_json" : "json")\(crlf)".data(using: .utf8)!)
-
-        body.append("--\(boundary)--\(crlf)".data(using: .utf8)!)
-        request.httpBody = body
-
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch let urlError as URLError {
-            switch urlError.code {
-            case .notConnectedToInternet, .networkConnectionLost, .cannotFindHost,
-                 .cannotConnectToHost, .dnsLookupFailed:
-                throw WhisperError.noInternet
-            case .timedOut:
-                throw WhisperError.timeout
-            default:
-                throw WhisperError.networkError(urlError)
-            }
-        } catch {
-            throw WhisperError.networkError(error)
-        }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw WhisperError.invalidResponse
-        }
-
-        switch httpResponse.statusCode {
-        case 200:
-            break  // success — continue
-        case 401:
-            throw WhisperError.unauthorized
-        case 429:
-            throw WhisperError.rateLimited
-        default:
-            if let apiError = try? JSONDecoder().decode(WhisperAPIError.self, from: data) {
-                throw WhisperError.apiError(apiError.error.message)
-            }
-            throw WhisperError.apiError("HTTP \(httpResponse.statusCode)")
-        }
-
-        try? FileManager.default.removeItem(at: audioURL)
-
-        if useVerbose {
-            guard let result = try? JSONDecoder().decode(WhisperVerboseResponse.self, from: data) else {
-                throw WhisperError.invalidResponse
-            }
-            let detectedLocale = WhisperResult.localeIdentifier(from: result.language)
-            vfLog("Whisper verbose: language='\(result.language ?? "?")' → locale='\(detectedLocale ?? "?")'")
-            return WhisperResult(
-                text: result.text.trimmingCharacters(in: .whitespacesAndNewlines),
-                detectedLanguage: detectedLocale
-            )
-        } else {
-            guard let result = try? JSONDecoder().decode(WhisperResponse.self, from: data) else {
-                throw WhisperError.invalidResponse
-            }
-            return WhisperResult(
-                text: result.text.trimmingCharacters(in: .whitespacesAndNewlines),
-                detectedLanguage: nil
-            )
-        }
-    }
-
-    // MARK: - Construir Body Multipart (usado pela transcrição simples legada)
-
-    private func buildMultipartBody(audioURL: URL, language: String, boundary: String) throws -> Data {
-        var body = Data()
-        let crlf = "\r\n"
-
-        let audioData = try Data(contentsOf: audioURL)
-        body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.m4a\"\(crlf)".data(using: .utf8)!)
-        body.append("Content-Type: audio/m4a\(crlf)\(crlf)".data(using: .utf8)!)
-        body.append(audioData)
-        body.append(crlf.data(using: .utf8)!)
-
-        body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"model\"\(crlf)\(crlf)".data(using: .utf8)!)
-        body.append("whisper-1\(crlf)".data(using: .utf8)!)
-
-        if !language.isEmpty && language != "auto" {
-            body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"language\"\(crlf)\(crlf)".data(using: .utf8)!)
-            body.append("\(language)\(crlf)".data(using: .utf8)!)
-        }
-
-        body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"response_format\"\(crlf)\(crlf)".data(using: .utf8)!)
-        body.append("json\(crlf)".data(using: .utf8)!)
-
-        body.append("--\(boundary)--\(crlf)".data(using: .utf8)!)
-
-        return body
+        throw WhisperError.noAPIKey
     }
 }

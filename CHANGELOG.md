@@ -8,6 +8,28 @@ Ordem: mais recente em cima.
 
 ---
 
+## 2026-04-29 — Ditado longo (>90s) falhava silenciosamente, texto perdido
+
+**Ficheiros**: `Controllers/DictationController.swift`, `UI/HUDCoordinator.swift`, `UI/RecordingHUDView.swift`
+
+**Sintoma**: Utilizador gravou ~147 segundos de ditado. O sistema não transcreveu, não injectou o texto, e não mostrou qualquer erro. O texto ficou perdido sem aviso.
+
+**Causa raiz dupla**:
+
+1. **Groq rejeita áudio > ~90-120s**: A API Whisper do Groq retornou erro imediatamente (5s após o pedido, antes de qualquer processamento real). O ficheiro M4A tinha ~2MB — bem abaixo do limite de 25MB — mas o Groq tem um limite prático de duração. O aviso visual aparecia aos 120s mas não forçava paragem.
+
+2. **`mode:off` silenciava também os erros**: `HUDCoordinator.dictationCompleted` com `mode:.off` definia `shouldShow = false` incondicionalmente — incluindo para `outcome:error`. O utilizador não viu nada. `storePendingRetry` foi chamado (o áudio estava guardado 10 min para retry), mas o ReviewHUD com o botão Retry nunca apareceu.
+
+**Fix em três camadas**:
+
+1. `HUDCoordinator`: `case .off: shouldShow = isFailure` — erros sempre visíveis mesmo com o painel desligado.
+2. `DictationController`: auto-stop task que dispara aos 90s — chama `stopDictation()` automaticamente. Cancela-se se o utilizador parar antes.
+3. `RecordingHUDView`: `longThreshold` baixado de 120s para 60s, com aviso actualizado ("para em 90s o sistema começa automaticamente").
+
+**Lição**: `mode:off` é uma preferência de UX para resultados normais, não um silenciador de falhas. Qualquer outcome de erro deve sempre chegar ao utilizador, independentemente do modo. Além disso, qualquer limite de API de terceiros deve ter um auto-stop client-side com margem de segurança.
+
+---
+
 ## 2026-04-27 — Media keys não pausavam Chrome / web players (2 problemas)
 
 **Ficheiros**: `Services/SystemAudioManager.swift`

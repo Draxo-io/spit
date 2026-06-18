@@ -10,6 +10,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Apply stored language preference before any UI loads
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // Guard: impede múltiplas instâncias mesmo quando lançadas de paths diferentes
+        // (ex: DerivedData vs /Applications). LSMultipleInstancesProhibited no Info.plist
+        // cobre o caso do Finder, mas não do open(1) ou Xcode.
+        let others = NSRunningApplication.runningApplications(withBundleIdentifier: "app.getspit")
+            .filter { $0 != NSRunningApplication.current }
+        if !others.isEmpty {
+            vfLog("Outra instância já em execução — a terminar esta.")
+            NSApp.terminate(nil)
+            return
+        }
+
         let lang = AppSettings.loadInterfaceLanguage()
         if lang != "system" {
             UserDefaults.standard.set([lang], forKey: "AppleLanguages")
@@ -19,6 +30,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         vfLog("applicationDidFinishLaunching — START")
+
+        // Watchdog in-process: capta exceções/sinais E deteta morte silenciosa da
+        // sessão anterior (que o .ips do sistema não vê, sobretudo SIGKILL/kernel).
+        // Instalar O MAIS CEDO POSSÍVEL para apanhar problemas no resto do setup.
+        MainActor.assumeIsolated { CrashWatchdog.shared.install() }
+
+        // LaunchAgent: pede ao launchd para relançar a app em caso de crash ou
+        // saída anormal (NÃO relança em ⌘Q / NSApp.terminate). Idempotente.
+        MainActor.assumeIsolated { LaunchAgentManager.shared.register() }
 
         // Menu bar app — sem ícone no Dock
         NSApp.setActivationPolicy(.accessory)
@@ -42,79 +62,48 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             vfLog("MenuBarController created and setup")
         }
 
-        // Permissões
-        requestMicrophonePermission()
-        requestAccessibilityPermission()
-        LiveSpeechRecognizer.requestPermission()
+        // Permissões — só pedir se o onboarding já foi concluído.
+        // Durante o onboarding, cada passo pede a sua própria permissão no momento
+        // certo (microfone no passo 1, acessibilidade no passo 2).
+        let onboardingDone = UserDefaults.standard.bool(forKey: "onboardingCompleted")
+        if onboardingDone {
+            requestMicrophonePermission()
+            requestAccessibilityPermission()
+            LiveSpeechRecognizer.requestPermission()
+        }
 
-        // Crash reporting — detect .ips files from previous crashes and ship to back-office
-        CrashReporter.shared.checkAndReport()
-
-        // Telemetry — ping de primeiro lançamento (device info anónimo)
-        TelemetryService.shared.pingIfNeeded()
-
-        // Onboarding — mostrar apenas na primeira execução
-        OnboardingWindowController.shared.showIfNeeded()
+        // Onboarding — mostrar no primeiro lançamento
+        Task { @MainActor in
+            let onboardingDone = UserDefaults.standard.bool(forKey: "onboardingCompleted")
+            if !onboardingDone {
+                OnboardingWindowController.shared.showIfNeeded()
+            }
+        }
 
         // Update checker — verifica actualizações 5s após launch, depois cada 24h
         UpdateChecker.shared.startChecking()
 
-        // Pre-warm da conexão TCP/TLS para o proxy Spit. Sem isto, a primeira
-        // chamada a /translate ou /format paga handshake completo (~500ms-2s)
-        // que somado a um cold-start da Groq pode dar 502 → user vê tradução
-        // falhar na primeira ditação. Um GET /auth/me leve aquece a conexão.
-        Task.detached(priority: .background) {
-            let url = URL(string: "\(LicenseManager.apiBase)/auth/me")!
-            var req = URLRequest(url: url)
-            req.timeoutInterval = 5
-            req.httpMethod = "GET"
-            // Não precisa de auth válido — qualquer resposta (200 ou 401) já aquece
-            // a conexão. Estamos só interessados no handshake TCP+TLS.
-            _ = try? await URLSession.shared.data(for: req)
-            vfLog("[prewarm] connection to spit-api warmed")
-        }
-
         vfLog("applicationDidFinishLaunching — DONE ✅")
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        // Força re-check imediato de AX quando a app volta ao foreground
+        // (ex.: utilizador regressou das Definições após conceder a permissão).
+        dictationController?.recheckAccessibility()
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
+        // Marcar saída limpa para o próximo arranque não confundir com crash.
+        MainActor.assumeIsolated { CrashWatchdog.shared.markGraceful() }
         dictationController?.teardown()
     }
 
-    // MARK: - URL Scheme: spit://activate?token=xxx  |  spit://auth?jwt=xxx
+    // MARK: - Deep link handler
 
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
-            guard url.scheme == "spit",
-                  let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-            else { continue }
-
-            if url.host == "activate",
-               let token = components.queryItems?.first(where: { $0.name == "token" })?.value {
-                vfLog("Deep link activation — token: \(token.prefix(8))…")
-                Task { @MainActor in
-                    await handleActivation(token: token)
-                }
-            } else if url.host == "auth",
-                      let jwt = components.queryItems?.first(where: { $0.name == "jwt" })?.value {
-                vfLog("Deep link auth — JWT received (\(jwt.count) chars)")
-                Task { await AuthManager.shared.handleDeepLink(jwt: jwt) }
-            }
-        }
-    }
-
-
-    @MainActor
-    private func handleActivation(token: String) async {
-        sendNotification(title: "Spit", body: String(localized: "Activating license…"))
-
-        do {
-            try await LicenseManager.shared.activate(token: token)
-            sendNotification(title: "Spit", body: String(localized: "License activated! Enjoy Spit."))
-            vfLog("License activated successfully ✅")
-        } catch {
-            sendNotification(title: String(localized: "Activation failed"), body: error.localizedDescription)
-            vfLog("Activation error: \(error.localizedDescription)")
+            guard url.scheme == "spit" else { continue }
+            vfLog("AppDelegate — deep link desconhecido: \(url)")
         }
     }
 

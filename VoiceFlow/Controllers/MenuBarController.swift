@@ -30,8 +30,12 @@ class MenuBarController: NSObject {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Spit")
-            button.action = #selector(togglePanel(_:))
+            let img = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Spit")
+            img?.isTemplate = true          // adapta automaticamente a dark/light mode
+            button.image = img
+            button.imageScaling = .scaleNone
+            button.sendAction(on: .leftMouseDown)   // dispara no press, não no release — área efectiva = quadrado inteiro
+            button.action = #selector(statusItemClicked(_:))
             button.target = self
         }
 
@@ -126,6 +130,25 @@ class MenuBarController: NSObject {
         statusItem.button?.toolTip = nil
     }
 
+    /// Chamado após autenticação por magic link: abre o popover e pisca verde brevemente.
+    func showAuthSuccess() {
+        guard let button = statusItem.button else { return }
+
+        // Flash verde no ícone durante 2s
+        button.image = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Autenticado")
+        button.contentTintColor = NSColor.systemGreen
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            guard let self else { return }
+            button.contentTintColor = nil
+            self.updateIcon(for: self.dictationController.state)
+        }
+
+        // Abrir o popover para mostrar o estado da conta
+        if !panel.isVisible {
+            openPanel()
+        }
+    }
+
     private func updateIcon(for state: DictationState) {
         guard let button = statusItem.button else { return }
 
@@ -162,10 +185,11 @@ class MenuBarController: NSObject {
         statusItem.button?.alphaValue = 1.0
     }
 
-    // MARK: - Toggle Panel
+    // MARK: - Menu bar click handlers
 
-    @objc func togglePanel(_ sender: AnyObject?) {
-        vfLog("togglePanel — isVisible: \(panel.isVisible)")
+    /// Left click: toggle the popover panel.
+    @objc func statusItemClicked(_ sender: AnyObject?) {
+        vfLog("statusItemClicked — isVisible: \(panel.isVisible)")
         if panel.isVisible {
             closePanel()
         } else {
@@ -179,10 +203,13 @@ class MenuBarController: NSObject {
             return
         }
 
-        // Tamanho fixo — evita usar fittingSize antes do primeiro layout SwiftUI
-        // que devolve valores não fiáveis (0 ou demasiado grandes)
+        // Rebuild content each time so SwiftUI re-reads @Published state (lastResult, etc.)
+        // that may have changed while the panel was hidden.
+        rebuildContent()
+
+        // Width fixed; height accommodates two blocks (Digitação + Leitura) with lastResult row.
         let panelWidth: CGFloat  = 300
-        let panelHeight: CGFloat = 320
+        let panelHeight: CGFloat = 420
 
         // 1. Obter o frame do botão em coordenadas de ecrã
         //    NSStatusBarButton.window é sempre não-nil enquanto o statusItem existe.
@@ -226,15 +253,19 @@ class MenuBarController: NSObject {
         panel.orderFront(nil)
         vfLog("openPanel — final frame: \(panel.frame)")
 
-        // 4. Fechar ao clicar fora
-        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.leftMouseDown, .rightMouseDown]
-        ) { [weak self] _ in
-            self?.closePanel()
+        // 4. Fechar ao clicar fora — instala monitor apenas no próximo ciclo do event loop
+        //    (evita que o próprio clique que abriu o painel o feche imediatamente)
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.panel.isVisible else { return }
+            self.globalClickMonitor = NSEvent.addGlobalMonitorForEvents(
+                matching: [.leftMouseDown, .rightMouseDown]
+            ) { [weak self] _ in
+                self?.closePanel()
+            }
         }
     }
 
-    private func closePanel() {
+    func closePanel() {
         panel.orderOut(nil)
         if let monitor = globalClickMonitor {
             NSEvent.removeMonitor(monitor)

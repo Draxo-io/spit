@@ -4,211 +4,251 @@ import UserNotifications
 
 // MARK: - TextInjector
 // Injecta texto no campo com foco.
-// Estratégia:
-// 1. AX injection (se Accessibility disponível)
-// 2. Clipboard + ⌘V via osascript (funciona sem Accessibility na app)
-// 3. Clipboard + CGEvent ⌘V (requer Accessibility)
-// 4. Último recurso: texto fica no clipboard
+//
+// Estratégia (por ordem de preferência):
+//
+// 1. AX kAXSelectedTextAttribute — direto, sem clipboard (apps nativas: TextEdit, Pages, Xcode…)
+//    Usa o elemento capturado em stopDictation(), antes de qualquer operação async.
+//    Se kAXSelectedTextRange está disponível, usamos AX e NÃO fazemos fallback
+//    (evita duplicação por AX com latência + keyboard events).
+//
+// 2. CGEvent Unicode keyboard — sem clipboard (browsers, Electron, qualquer app sem AX).
+//    Antes de enviar: ativa o app-alvo capturado em stopDictation() para garantir
+//    que os eventos chegam ao destino certo mesmo após 3-5s de processamento async.
+//
+// 3. Clipboard (read-only) — só quando AX não está autorizado.
+//    NUNCA auto-cola. O utilizador usa ⌘V manualmente.
 
 enum InjectionResult {
-    case injected           // Texto injectado directamente via AX
-    case pastedAndRestored  // Texto colado via ⌘V, clipboard original restaurado
-    case copiedToClipboard  // Último recurso — texto no clipboard (não conseguiu colar)
-    case failed(String)     // Falha inesperada
+    case injectedViaAX             // AX kAXSelectedTextAttribute
+    case injectedViaKeyboard       // CGEvent Unicode keyboard events
+    case injectedViaClipboardPaste // Clipboard + ⌘V forçado (apps onde AX dá falso-positivo)
+    case copiedToClipboard         // AX não autorizado — clipboard manual
+    case failed(String)
 }
 
 class TextInjector {
 
     private let focusDetector = FocusDetector()
 
+    // Apps onde `kAXSelectedTextAttribute` retorna .success mas o texto NÃO aparece
+    // (Electron/Catalyst/Web wrappers que aceitam a chamada AX silenciosamente).
+    // Para estes saltamos o AX e vamos directos a clipboard+⌘V.
+    private static let axUnreliableBundleIDs: Set<String> = [
+        "net.whatsapp.WhatsApp",           // WhatsApp (Catalyst)
+        "desktop.WhatsApp",                // WhatsApp (alt distribution)
+        "com.tinyspeck.slackmacgap",       // Slack
+        "com.hnc.Discord",                 // Discord
+        "com.microsoft.teams",             // Microsoft Teams (legacy)
+        "com.microsoft.teams2",            // Microsoft Teams (new)
+        "ru.keepcoder.Telegram",           // Telegram (Mac App Store)
+        "org.telegram.desktop",            // Telegram (Desktop)
+        "com.openai.chat",                 // ChatGPT desktop
+        "com.anthropic.claudefordesktop",  // Claude desktop
+        "notion.id",                       // Notion
+        "md.obsidian",                     // Obsidian
+        "us.zoom.xos",                     // Zoom
+        "com.spotify.client",              // Spotify
+        "com.todesktop.230313mzl4w4u92"    // Cursor
+    ]
+
+    private func isAXUnreliable(_ app: NSRunningApplication?) -> Bool {
+        guard let id = app?.bundleIdentifier else { return false }
+        return Self.axUnreliableBundleIDs.contains(id)
+    }
+
+    // MARK: - Espaçamento automático
+
+    /// Lê o caractere imediatamente antes do cursor no elemento AX.
+    /// Funciona mesmo em apps onde a *escrita* via AX não é fiável —
+    /// muitas apps Electron/Catalyst expõem a leitura mesmo que não a escrita.
+    private func charBeforeCursor(in element: AXUIElement) -> Character? {
+        var rangeRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            element, kAXSelectedTextRangeAttribute as CFString, &rangeRef
+        ) == .success, let rangeVal = rangeRef else { return nil }
+
+        var cfRange = CFRange(location: 0, length: 0)
+        guard AXValueGetValue(rangeVal as! AXValue, .cfRange, &cfRange),
+              cfRange.location > 0 else { return nil }
+
+        var lookback = CFRange(location: cfRange.location - 1, length: 1)
+        guard let axRangeVal = AXValueCreate(.cfRange, &lookback) else { return nil }
+
+        var charRef: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+            element,
+            kAXStringForRangeParameterizedAttribute as CFString,
+            axRangeVal,
+            &charRef
+        ) == .success, let str = charRef as? String, let char = str.first else { return nil }
+
+        return char
+    }
+
+    /// Retorna `text` com um espaço inicial se o cursor estiver logo após
+    /// conteúdo não-whitespace. Evita que dois ditados consecutivos fiquem colados.
+    private func addLeadingSpaceIfNeeded(_ text: String, element: AXUIElement?) -> String {
+        // Não tocar se o texto já começa com whitespace
+        guard let first = text.first, !first.isWhitespace else { return text }
+        guard let element else { return text }
+
+        if let prev = charBeforeCursor(in: element), !prev.isWhitespace {
+            vfLog("inject() — espaço automático inserido (prev char: '\(prev)')")
+            return " " + text
+        }
+        return text
+    }
+
     // MARK: - Injectar Texto
 
-    func inject(text: String) -> InjectionResult {
+    /// - Parameters:
+    ///   - text: Texto a injectar (já traduzido se aplicável).
+    ///   - precapturedElement: Elemento AX capturado em stopDictation(), antes do processamento async.
+    ///   - targetApp: App frontmost capturado em stopDictation().
+    func inject(
+        text: String,
+        precapturedElement: AXUIElement? = nil,
+        targetApp: NSRunningApplication? = nil
+    ) -> InjectionResult {
         guard !text.isEmpty else { return .failed("Empty text") }
 
         let axTrusted = AXIsProcessTrusted()
-        vfLog("inject() — \(text.count) chars, AXTrusted: \(axTrusted)")
 
-        guard axTrusted else {
-            // No accessibility permission — text to clipboard, user must ⌘V manually
-            vfLog("AX not trusted — clipboard only")
-            return pasteViaClipboard(text: text, axTrusted: false, certainPaste: false)
-        }
-
-        // AX is trusted — try direct injection first, then always fall back to ⌘V.
-        // We do NOT gate the ⌘V on getFocusedElement() because:
-        //   - Web-based text fields (Chrome, Safari) often fail AX element inspection
-        //   - If there's no focused field, ⌘V simply does nothing (safe)
-        //   - Showing a false "no focus" warning is worse than silently sending ⌘V
-
-        if let element = focusDetector.getFocusedElement() {
-            vfLog("Focused element found — trying direct AX inject")
-            if tryAxInject(text: text, into: element) {
-                vfLog("✅ AX inject succeeded")
-                return .injected
-            }
-            vfLog("Direct AX inject failed — falling back to ⌘V")
+        // Usar o elemento pré-capturado se disponível; caso contrário tentar obter o atual.
+        // O pré-capturado reflete o foco no momento em que o utilizador parou de gravar —
+        // muito mais fiável do que o foco atual (que pode ter mudado durante transcrição+tradução).
+        let focusedElement: AXUIElement?
+        if let captured = precapturedElement {
+            focusedElement = captured
+            vfLog("inject() — usando elemento pré-capturado")
         } else {
-            vfLog("No focused element via AX (possibly web field) — attempting ⌘V anyway")
+            focusedElement = axTrusted ? focusDetector.getFocusedElement() : nil
+            vfLog("inject() — usando elemento atual (sem captura prévia)")
         }
 
-        // Always attempt ⌘V when AX is trusted — certainPaste:true = no warning shown
-        return pasteViaClipboard(text: text, axTrusted: true, certainPaste: true)
-    }
+        let axUnreliable = isAXUnreliable(targetApp)
 
-    // MARK: - Injecção via AXUIElement
+        // Espaçamento automático: se o cursor está logo após texto sem espaço,
+        // prepend um espaço para que dois ditados consecutivos não fiquem colados.
+        // A leitura AX é tentada mesmo em apps axUnreliable (muitas lêem mas não escrevem).
+        let text = addLeadingSpaceIfNeeded(text, element: focusedElement)
 
-    private func tryAxInject(text: String, into element: AXUIElement) -> Bool {
-        // Método A: kAXSelectedTextAttribute (insere na posição do cursor / substitui selecção)
-        var selectedRangeRef: CFTypeRef?
-        let rangeResult = AXUIElementCopyAttributeValue(
-            element,
-            kAXSelectedTextRangeAttribute as CFString,
-            &selectedRangeRef
-        )
+        vfLog("inject() — \(text.count) chars, AXTrusted: \(axTrusted), element: \(focusedElement != nil), targetApp: \(targetApp?.localizedName ?? "?"), axUnreliable: \(axUnreliable)")
 
-        if rangeResult == .success {
-            let setResult = AXUIElementSetAttributeValue(
+        // ── Método 1: AX direct inject (saltado em apps onde AX é falso-positivo) ───
+        if !axUnreliable, let element = focusedElement {
+            var selectedRangeRef: CFTypeRef?
+            let rangeResult = AXUIElementCopyAttributeValue(
                 element,
-                kAXSelectedTextAttribute as CFString,
-                text as CFString
+                kAXSelectedTextRangeAttribute as CFString,
+                &selectedRangeRef
             )
-            if setResult == .success {
-                vfLog("AX inject via kAXSelectedTextAttribute OK")
-                return true
+
+            if rangeResult == .success {
+                vfLog("inject() AX path — text:\(text.count) chars: \(text.prefix(80))")
+                let setResult = AXUIElementSetAttributeValue(
+                    element,
+                    kAXSelectedTextAttribute as CFString,
+                    text as CFString
+                )
+                if setResult == .success {
+                    vfLog("✅ AX inject via kAXSelectedTextAttribute OK")
+                } else {
+                    // AX reportou erro mas pode ter inserido com latência.
+                    // NÃO fazemos fallback — evita duplicação (AX tardio + keyboard).
+                    vfLog("⚠️ AX set retornou \(setResult.rawValue) — sem fallback (previne duplicação)")
+                }
+                return .injectedViaAX
             }
-            vfLog("AX kAXSelectedTextAttribute falhou: \(setResult.rawValue)")
+            vfLog("kAXSelectedTextRange indisponível (\(rangeResult.rawValue)) — campo não editável via AX, usando keyboard")
         }
 
-        // Método B: AXInsertedText (algumas apps suportam)
-        let insertResult = AXUIElementSetAttributeValue(
-            element,
-            "AXInsertedText" as CFString,
-            text as CFString
-        )
-        if insertResult == .success {
-            vfLog("AX inject via AXInsertedText OK")
-            return true
-        }
-
-        // Método C: Append ao valor existente (último recurso AX)
-        var settable: DarwinBoolean = false
-        AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable)
-        if settable.boolValue {
-            var currentValueRef: CFTypeRef?
-            AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &currentValueRef)
-            let currentText = (currentValueRef as? String) ?? ""
-            let newValue = currentText + text
-            let result = AXUIElementSetAttributeValue(
-                element,
-                kAXValueAttribute as CFString,
-                newValue as CFString
-            )
-            if result == .success {
-                vfLog("AX inject via kAXValueAttribute append OK")
-                return true
-            }
-        }
-
-        return false
-    }
-
-    // MARK: - Colar via Clipboard Temporário + ⌘V
-
-    /// - certainPaste: true = we know there's a focused field, ⌘V will land correctly
-    ///                false = no focused field detected, ⌘V result is uncertain → show warning
-    private func pasteViaClipboard(text: String, axTrusted: Bool, certainPaste: Bool) -> InjectionResult {
-        let pasteboard = NSPasteboard.general
-
-        let frontApp = NSWorkspace.shared.frontmostApplication
-        let targetPID = frontApp?.processIdentifier
-        vfLog("Target: \(frontApp?.localizedName ?? "?") PID:\(targetPID ?? -1) ax:\(axTrusted) certain:\(certainPaste)")
-
-        // Always save + put text in clipboard
-        let savedItems = saveClipboard(pasteboard)
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-
+        // ── Método 2: Clipboard + Cmd+V ou CGEvent Unicode keyboard ─────────────
+        // Quando não há elemento AX (Electron, VS Code, Discord, Claude Desktop…):
+        //   → Clipboard + Cmd+V é universalmente fiável. O Electron trata Cmd+V via
+        //     sistema de comandos do app, não pelo renderer Chromium — funciona mesmo
+        //     quando o campo de texto não processa CGEvent Unicode directamente.
+        // Quando há elemento AX mas não era editável (range falhou):
+        //   → Fallback para CGEvent Unicode (apps nativos que rejeitaram AX).
         if axTrusted {
-            // Send ⌘V to frontmost app
-            simulatePaste(targetPID: targetPID)
-            vfLog("⌘V sent via postToPid(\(targetPID ?? -1))")
-
-            if certainPaste {
-                // Focused field confirmed — restore clipboard, no warning
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    self.restoreClipboard(pasteboard, items: savedItems)
-                    vfLog("Clipboard restored")
-                }
-                return .pastedAndRestored
+            if let target = targetApp, !target.isActive {
+                vfLog("⌨ Ativando app-alvo '\(target.localizedName ?? "?")' antes de injecção")
+                target.activate(options: [])
+                Thread.sleep(forTimeInterval: 0.08)
             } else {
-                // No focused field — ⌘V attempted but uncertain
-                // Leave text in clipboard + show warning so user can ⌘V manually if needed
-                // Restore clipboard after longer delay (user may still paste)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
-                    self.restoreClipboard(pasteboard, items: savedItems)
-                    vfLog("Clipboard restored (delayed — no focus case)")
+                vfLog("⌨ App-alvo '\(targetApp?.localizedName ?? "?")' já está ativo")
+            }
+
+            if focusedElement == nil || axUnreliable {
+                // Sem elemento AX OU app blacklisted → Clipboard + Cmd+V
+                let reason = axUnreliable ? "ax-unreliable" : "no-ax-element"
+                vfLog("inject() clipboard+V path (\(reason)) — text:\(text.count) chars: \(text.prefix(80))")
+                let prevString = NSPasteboard.general.string(forType: .string)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+
+                let src = CGEventSource(stateID: .combinedSessionState)
+                if let dn = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: true),
+                   let up = CGEvent(keyboardEventSource: src, virtualKey: 9, keyDown: false) {
+                    dn.flags = .maskCommand
+                    up.flags = .maskCommand
+                    dn.post(tap: .cgSessionEventTap)
+                    up.post(tap: .cgSessionEventTap)
                 }
-                return .copiedToClipboard
-            }
-        } else {
-            // AX not trusted — text in clipboard, user must paste manually
-            vfLog("AX not trusted — clipboard only, user must ⌘V")
-            return .copiedToClipboard
-        }
-    }
 
-    // MARK: - Simulate ⌘V
+                // Restaurar clipboard anterior após o paste completar.
+                // Apps Electron/Catalyst (axUnreliable) recebem um delay ligeiramente
+                // maior (0.6s) para garantir que o Cmd+V é processado antes do restore.
+                // Em caso raro de paste engolido silenciosamente (modal/overlay), o
+                // utilizador perde o texto no clipboard — mas isso é muito preferível
+                // a destruir o clipboard em cada ditado bem-sucedido. Fix: 2026-04-30.
+                let restoreDelay: Double = axUnreliable ? 0.6 : 0.4
+                DispatchQueue.main.asyncAfter(deadline: .now() + restoreDelay) {
+                    NSPasteboard.general.clearContents()
+                    if let prev = prevString {
+                        NSPasteboard.general.setString(prev, forType: .string)
+                    }
+                }
+                return axUnreliable ? .injectedViaClipboardPaste : .injectedViaKeyboard
 
-    @discardableResult
-    private func simulatePaste(targetPID: pid_t?) -> Bool {
-        let source = CGEventSource(stateID: .hidSystemState)
-
-        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else {
-            vfLog("Failed to create CGEvent for ⌘V")
-            return false
-        }
-
-        keyDown.flags = .maskCommand
-        keyUp.flags = .maskCommand
-
-        // cgSessionEventTap funciona com Accessibility mesmo em App Sandbox.
-        // postToPid() fica bloqueado em sandbox — não o usar.
-        keyDown.post(tap: .cgSessionEventTap)
-        keyUp.post(tap: .cgSessionEventTap)
-        vfLog("⌘V sent via cgSessionEventTap (target: \(targetPID.map(String.init) ?? "nil"))")
-
-        return true
-    }
-
-    // MARK: - Salvar / Restaurar Clipboard
-
-    private struct ClipboardItem {
-        let type: NSPasteboard.PasteboardType
-        let data: Data
-    }
-
-    private func saveClipboard(_ pasteboard: NSPasteboard) -> [ClipboardItem] {
-        var items: [ClipboardItem] = []
-
-        guard let types = pasteboard.types else { return items }
-
-        for type in types {
-            if let data = pasteboard.data(forType: type) {
-                items.append(ClipboardItem(type: type, data: data))
+            } else {
+                // Tem elemento AX mas não era editável → CGEvent Unicode keyboard
+                vfLog("inject() keyboard path — text:\(text.count) chars: \(text.prefix(80))")
+                typeViaKeyboardEvents(text: text)
+                return .injectedViaKeyboard
             }
         }
 
-        return items
+        // ── Método 3: Clipboard manual (AX não autorizado) ───────────────────
+        vfLog("⚠️ AX not trusted — clipboard only, user must ⌘V")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        return .copiedToClipboard
     }
 
-    private func restoreClipboard(_ pasteboard: NSPasteboard, items: [ClipboardItem]) {
-        guard !items.isEmpty else { return }
+    // MARK: - Injecção via CGEvent Unicode (sem clipboard)
 
-        pasteboard.clearContents()
-        for item in items {
-            pasteboard.setData(item.data, forType: item.type)
+    private func typeViaKeyboardEvents(text: String) {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        let utf16 = Array(text.utf16)
+        let chunkSize = 20
+        var index = 0
+
+        while index < utf16.count {
+            let end = min(index + chunkSize, utf16.count)
+            var chunk = Array(utf16[index..<end])
+
+            if let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true) {
+                keyDown.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: &chunk)
+                keyDown.post(tap: .cgSessionEventTap)
+            }
+            // keyUp intentionally has NO unicode string — text is inserted on keyDown only.
+            // Setting unicode on keyUp causes Electron/browser apps to insert the text twice.
+            if let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) {
+                keyUp.post(tap: .cgSessionEventTap)
+            }
+            index = end
         }
     }
 
@@ -216,8 +256,6 @@ class TextInjector {
 
     func showClipboardNotification() {
         let center = UNUserNotificationCenter.current()
-
-        // Pedir autorização se ainda não foi concedida (silencioso — não mostra diálogo aqui)
         center.requestAuthorization(options: [.alert]) { _, _ in }
 
         let content = UNMutableNotificationContent()
@@ -227,7 +265,7 @@ class TextInjector {
         let request = UNNotificationRequest(
             identifier: "spit.clipboard",
             content: content,
-            trigger: nil   // entregar imediatamente
+            trigger: nil
         )
         center.add(request) { error in
             if let error { vfLog("UNNotification error: \(error)") }

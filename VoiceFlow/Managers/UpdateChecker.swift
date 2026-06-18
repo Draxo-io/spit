@@ -18,7 +18,8 @@ final class UpdateChecker {
 
     // ── Constants ─────────────────────────────────────────────────────────
     static let updateAvailableNotification = Notification.Name("SpitUpdateAvailable")
-    private static let latestURL = URL(string: "https://getspit.app/latest.json")!
+    // Hosted as a raw file in the GitHub repo — always reflects the latest release.
+    private static let latestURL = URL(string: "https://raw.githubusercontent.com/rafaellopes/spit/main/latest.json")!
     private static let checkInterval: TimeInterval = 24 * 3600   // 24h
     private static let initialDelay: TimeInterval = 5            // seconds after launch
 

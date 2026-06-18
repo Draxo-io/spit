@@ -25,3 +25,33 @@ logs/
 
 # Keys / secrets
 *.env
+
+# App Store artifacts
+AppStore/
+*.ipa
+*.pkg
+ExportOptions.plist
+
+# Sensitive files (never commit)
+VoiceFlow/Resources/Spit.entitlements
+*.storekit
+
+# Build artifacts
+*.xcarchive
+
+# Private docs
+ROTEIRO-RAFAEL.md
+competitive-analysis.csv
+SPEC-AUTH.md
+Spit-Brand-Kit/
+Spit-Screenshots/
+squads/
+_opensquad/
+website/
+spit-landing.html
+design-prototype/
+scripts/
+
+# Claude
+.claude/commands/
+.claude/rules/

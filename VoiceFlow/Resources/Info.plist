@@ -17,25 +17,35 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>9</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>
-	<string>13.0</string>
+	<string>14.0</string>
+	<key>LSMultipleInstancesProhibited</key>
+	<true/>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Spit needs microphone access to transcribe your voice to text.</string>
+	<key>NSAccessibilityUsageDescription</key>
+	<string>Spit uses Accessibility to insert dictated text directly into the focused text field, enabling hands-free typing for users with motor disabilities, RSI, or any condition that makes keyboard use difficult or painful. It also reads selected text aloud to support users with reading disabilities or visual impairments.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Spit uses on-device speech recognition to display a live preview of your dictation as you speak.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Spit checks whether Spotify or Music is playing so it can pause your music while you dictate — and avoid resuming music you paused yourself.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>app.getspit.activate</string>
+			<string>app.getspit.url</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>spit</string>
 			</array>
 		</dict>
 	</array>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Spit needs microphone access to transcribe your voice to text.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Spit uses speech recognition to show a live preview of what you're saying while recording.</string>
 </dict>
 </plist>
