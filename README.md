@@ -5,6 +5,12 @@ Free, open-source, 100% on-device voice dictation for Mac. No subscription, no c
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
+[![GitHub release](https://img.shields.io/github/v/release/rafaellopes/spit)](https://github.com/rafaellopes/spit/releases/latest)
+[![GitHub stars](https://img.shields.io/github/stars/rafaellopes/spit?style=social)](https://github.com/rafaellopes/spit/stargazers)
+
+<!-- TODO (Rafael): grava um GIF/vídeo curto (~10s) do Spit em uso real com Kap
+     e substitui esta linha por: ![Spit demo](docs/demo.gif)
+     É o maior multiplicador de conversão num README — ver GROWTH-PLAN.md § Pilar C. -->
 
 ---
 
@@ -72,13 +78,9 @@ Spit is designed to be privacy-first by default:
 
 ## Contributing
 
-Contributions are welcome. Please open an issue before submitting a large pull request so we can discuss the approach.
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-1. Fork the repo and create a branch: `git checkout -b my-feature`
-2. Make your changes and verify the build: `xcodebuild -scheme VoiceFlow -configuration Debug build`
-3. Open a pull request with a clear description of what changed and why
-
-Bug reports with steps to reproduce are also very helpful.
+Found a security issue? See [SECURITY.md](SECURITY.md) — please don't open a public issue.
 
 ## License
 
@@ -90,5 +92,7 @@ MIT — see [LICENSE](LICENSE) for the full text.
 - [OpenAI Whisper](https://github.com/openai/whisper) — the underlying speech recognition models
 
 ---
+
+Built by [Rafael Lopes](https://getspit.app/about) at [Draxo.io](https://draxo.io) — a solo indie studio, no investors, no sales team.
 
 *Built with care in the EU.*
