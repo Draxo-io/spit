@@ -7,23 +7,17 @@
         <language>en</language>
         <item>
             <title>Spit 2.0</title>
-            <pubDate>Wed, 18 Jun 2026 00:00:00 +0000</pubDate>
-            <sparkle:version>10</sparkle:version>
+            <pubDate>qui, 02 jul 2026 11:04:58 +0000</pubDate>
+            <sparkle:version>11</sparkle:version>
             <sparkle:shortVersionString>2.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-                <h3>Spit 2.0 — Free & Open-Source</h3>
-                <ul>
-                    <li>On-device transcription via WhisperKit (no cloud, no accounts)</li>
-                    <li>Completely free, MIT licensed</li>
-                    <li>Auto-restart via LaunchAgent</li>
-                    <li>Memory-aware model management</li>
-                </ul>
+                <p>Changelog completo em <a href="https://github.com/rafaellopes/spit/releases/tag/v2.0">GitHub</a>.</p>
             ]]></description>
             <enclosure
-                url="https://github.com/rafaellopes/spit/releases/download/v2.0.0/Spit.dmg"
-                sparkle:edSignature="PLACEHOLDER_SIGNATURE"
-                length="0"
+                url="https://github.com/rafaellopes/spit/releases/download/v2.0/Spit-2.0.dmg"
+                sparkle:edSignature="PBr/Rb4L6RWQtulNzQw3yIOWghO1OBGKIPslqDAvgxHmjDiEPZDUtJVA+SiuUnyiXSghXQyrNBJ5OesXpXppCg=="
+                length="17634408"
                 type="application/octet-stream"/>
         </item>
     </channel>

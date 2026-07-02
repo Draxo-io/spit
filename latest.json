@@ -1,8 +1,8 @@
 {
   "version": "2.0",
-  "build": 10,
-  "date": "2026-06-18T00:00:00Z",
-  "url": "https://github.com/rafaellopes/spit/releases/download/v2.0.0/Spit.dmg",
-  "notes": "Spit is now free and open-source. On-device transcription via WhisperKit. No subscriptions, no cloud, no accounts.",
+  "build": 11,
+  "date": "2026-07-02T11:04:59Z",
+  "url": "https://github.com/rafaellopes/spit/releases/download/v2.0/Spit-2.0.dmg",
+  "notes": "Changelog: https://github.com/rafaellopes/spit/releases/tag/v2.0",
   "min_os": "14.0"
 }
