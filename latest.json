@@ -1,8 +1,8 @@
 {
-  "version": "2.0",
-  "build": 11,
-  "date": "2026-07-02T11:04:59Z",
-  "url": "https://github.com/rafaellopes/spit/releases/download/v2.0/Spit-2.0.dmg",
-  "notes": "Changelog: https://github.com/rafaellopes/spit/releases/tag/v2.0",
+  "version": "2.1",
+  "build": 12,
+  "date": "2026-07-06T11:33:54Z",
+  "url": "https://github.com/rafaellopes/spit/releases/download/v2.1/Spit-2.1.dmg",
+  "notes": "Changelog: https://github.com/rafaellopes/spit/releases/tag/v2.1",
   "min_os": "14.0"
 }
