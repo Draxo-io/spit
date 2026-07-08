@@ -50,7 +50,7 @@
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/rafaellopes/spit/main/appcast.xml</string>
+	<string>https://raw.githubusercontent.com/Draxo-io/spit/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>dm/30w/J7yODVEL239UefhLy7g//nEC4azbBcBmslZk=</string>
 	<key>SUScheduledCheckInterval</key>

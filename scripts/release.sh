@@ -23,11 +23,11 @@ SCHEME="VoiceFlow"
 SIGNING_IDENTITY="Developer ID Application: Rafael Lopes (R6VWLH887N)"
 TEAM_ID="R6VWLH887N"
 NOTARY_PROFILE="spit-notary"
-PRIVATE_KEY="$HOME/.config/spit/sparkle_ed25519_private.pem"
+PRIVATE_KEY="$HOME/.config/spit/sparkle_private_raw.b64"
 APPCAST="$REPO_ROOT/appcast.xml"
 LATEST_JSON="$REPO_ROOT/latest.json"
 INFO_PLIST="$REPO_ROOT/VoiceFlow/Resources/Info.plist"
-GITHUB_REPO="rafaellopes/spit"
+GITHUB_REPO="Draxo-io/spit"
 
 # ── Parse args ──────────────────────────────────────────────────────────────────
 

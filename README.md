@@ -5,8 +5,8 @@ Free, open-source, 100% on-device voice dictation for Mac. No subscription, no c
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
-[![GitHub release](https://img.shields.io/github/v/release/rafaellopes/spit)](https://github.com/rafaellopes/spit/releases/latest)
-[![GitHub stars](https://img.shields.io/github/stars/rafaellopes/spit?style=social)](https://github.com/rafaellopes/spit/stargazers)
+[![GitHub release](https://img.shields.io/github/v/release/Draxo-io/spit)](https://github.com/Draxo-io/spit/releases/latest)
+[![GitHub stars](https://img.shields.io/github/stars/Draxo-io/spit?style=social)](https://github.com/Draxo-io/spit/stargazers)
 
 <!-- TODO (Rafael): grava um GIF/vídeo curto (~10s) do Spit em uso real com Kap
      e substitui esta linha por: ![Spit demo](docs/demo.gif)
@@ -35,12 +35,12 @@ Free, open-source, 100% on-device voice dictation for Mac. No subscription, no c
 
 ### Download (recommended)
 
-Download the latest release from the [Releases](https://github.com/rafaellopes/spit/releases) page and drag Spit.app to your Applications folder.
+Download the latest release from the [Releases](https://github.com/Draxo-io/spit/releases) page and drag Spit.app to your Applications folder.
 
 ### Build from source
 
 ```bash
-git clone https://github.com/rafaellopes/spit.git
+git clone https://github.com/Draxo-io/spit.git
 cd spit
 
 # Build

@@ -74,7 +74,7 @@ que a versão live — não usar como base sem rever.
 
 ---
 
-## 3. Pilar C — GitHub (`rafaellopes/spit`)
+## 3. Pilar C — GitHub (`Draxo-io/spit`)
 
 O README já é bom. Falta transformá-lo de "documentação" em **montra + prova
 social + porta de entrada para a pessoa por trás**.

@@ -8,6 +8,27 @@ Ordem: mais recente em cima.
 
 ---
 
+## 2026-07-08 — App "fechava" recorrentemente: Jetsam + modelos-lixo a encher o disco
+
+**Ficheiros**: `Services/LocalWhisperService.swift`
+
+**Sintoma**: Produção e dev fechavam-se sozinhas repetidamente, sem crash report. O utilizador não sabia se era bug ou conflito de versões.
+
+**Diagnóstico (por dados, não intuição)**:
+- Sem `.ips` de crash, mas **`.diag` de "disk writes"** repetidos: ~2147 MB (2 GiB) de *file-backed memory dirtied* por sessão. Stack = `WhisperKit Downloader.httpGet → NSFileHandle.write`.
+- `CrashWatchdog`: `kind=silent_exit` repetido = **SIGKILL** não capturável = **Jetsam** (kernel mata por pressão de memória).
+- Footprint da app em repouso: só **111 MB** — a app não é pesada; é morta por ser **menu-bar app em background**, alvo prioritário do Jetsam quando o *sistema* fica sob pressão.
+- **Disco com só 9.4 GB livres.** A pasta de modelos da produção tinha **3.6 GB** (vs 464 MB do `small` em uso): restos de `large-v3_turbo` (3 GB) e `base` (140 MB) da era do seletor de modelos (removido). Disco quase cheio → pressão de memória alta → Jetsam.
+
+**Causa raiz**: cadeia — modelos-lixo acumulados enchiam o disco → pressão de memória do sistema → Jetsam matava o Spit (background) → LaunchAgent relançava → repetia. Agravado por I/O de re-escrita dos modelos mmapped.
+
+**Fix**:
+1. Limpeza imediata dos modelos não usados (3.6 GB → 467 MB; disco 9.4 → 13 GB livres).
+2. `LocalWhisperService.purgeOtherModels(keeping:in:)` — no primeiro load de cada sessão, apaga qualquer modelo em cache que não seja o em uso. Evita reacumulação. Preserva o tokenizer (`models/openai/...`).
+3. Complementa o fix de 07-06 (Whisper só descarrega em pressão `critical`, não `warning`) — menos reload = menos re-escrita.
+
+**Lição**: um menu-bar app em background é morto por Jetsam sob pressão do *sistema*, mesmo com footprint próprio baixo. Não deixar caches crescerem sem limite — cache regenerável que enche o disco vira causa de instabilidade. Diagnosticar `silent_exit` do CrashWatchdog + `.diag` files, não só `.ips`.
+
 ## 2026-07-06 — Modelo de ditado descarregava com demasiada frequência
 
 **Ficheiros**: `App/AppDelegate.swift`

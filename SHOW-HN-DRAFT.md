@@ -7,7 +7,7 @@ Show HN: Spit – On-device voice dictation for Mac, free and open source
 
 ## URL a submeter
 ```
-https://github.com/rafaellopes/spit
+https://github.com/Draxo-io/spit
 ```
 (Link para o repo, não para o site — maximiza conversão em stars, que é o objetivo. O README já serve como landing page com instalação/features.)
 

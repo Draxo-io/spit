@@ -12,10 +12,10 @@
             <sparkle:shortVersionString>2.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-                <p>Changelog completo em <a href="https://github.com/rafaellopes/spit/releases/tag/v2.1">GitHub</a>.</p>
+                <p>Changelog completo em <a href="https://github.com/Draxo-io/spit/releases/tag/v2.1">GitHub</a>.</p>
             ]]></description>
             <enclosure
-                url="https://github.com/rafaellopes/spit/releases/download/v2.1/Spit-2.1.dmg"
+                url="https://github.com/Draxo-io/spit/releases/download/v2.1/Spit-2.1.dmg"
                 sparkle:edSignature="viwS8+oEAhPQgzV6EJ7MXJK9DD1uEGIkpY9dNdwjxfsc0vSmwAnVFYxtKGuQryqqsxcyp5pnpzXwzJuaKLezDg=="
                 length="17637771"
                 type="application/octet-stream"/>
