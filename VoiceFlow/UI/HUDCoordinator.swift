@@ -17,6 +17,11 @@ final class HUDCoordinator {
 
     // MARK: - Recording lifecycle
 
+    /// Modelo a recarregar — mostra a pill com estado de loading.
+    func modelLoadingStarted() {
+        recording.showLoading()
+    }
+
     /// Recording just started — show the pill.
     func recordingStarted() {
         recording.showRecording()
@@ -35,9 +40,20 @@ final class HUDCoordinator {
     // MARK: - Dictation completed
 
     /// Dictation cycle finished — dismisses the RecordingHUD.
-    /// The ReviewHUD is now opened manually via the menu bar icon.
+    ///
+    /// The ReviewHUD is normally opened manually via the menu bar icon, EXCEPT
+    /// when the text never reached its destination and only landed in the
+    /// clipboard (`pastedViaClipboard` — Accessibility permission missing, or
+    /// injection failed). In that case we open it automatically so the text
+    /// doesn't silently vanish: the user sees it and the alert with the ⌘V
+    /// instruction. See SPEC §7 "Quando abre".
     func dictationCompleted(result: DictationResult) {
         recording.dismiss()
         vfLog("[HUDCoordinator] completed — outcome:\(result.outcome)")
+
+        if result.pastedViaClipboard {
+            vfLog("[HUDCoordinator] text only in clipboard — auto-opening ReviewHUD")
+            ReviewHUDWindowController.shared.showForLastResult(result)
+        }
     }
 }

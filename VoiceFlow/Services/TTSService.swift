@@ -1,11 +1,14 @@
 import AppKit
 import ApplicationServices
 import CoreGraphics
+import Combine
+import AVFoundation
 
 // MARK: - TTSService
 // Lê texto em voz alta.
 // Estratégia de voz:
-//   NSSpeechSynthesizer nativo (gratuito, offline, sem chave)
+//   AVSpeechSynthesizer nativo como fallback (macOS 14+, funciona no macOS 26 Tahoe)
+//   NSSpeechSynthesizer foi removido — disparava didFinishSpeaking imediatamente no macOS 26
 //
 // Estratégia para obter o texto:
 //   1. kAXSelectedTextAttribute via Accessibility API (nativo, sem clipboard)
@@ -15,11 +18,14 @@ import CoreGraphics
 
 enum ReadingPhase: Equatable {
     case idle
-    case processing    // a aguardar resposta da API TTS
+    case warmingUp     // primeiro uso da sessão — motor a compilar JIT (~20s)
+    case reloading     // recarregamento após standby automático
+    case processing    // a aguardar geração de áudio (motor já aquecido)
     case translating   // a traduzir o texto antes de ler
+    case standingBy    // motor a ser descarregado por inatividade
     case playing
     case paused
-    case failed(String) // AI TTS falhou — mostra mensagem e auto-dispensa
+    case failed(String)
 }
 
 // MARK: - TTSService
@@ -43,15 +49,17 @@ final class TTSService: NSObject, ObservableObject {
     /// If the selected text exceeds this, only the first 5 000 chars are read.
     static let ttsSessionCap = 5_000
 
-    // MARK: - Native synthesizer (system voice)
+    // MARK: - Native synthesizer fallback (AVSpeechSynthesizer, macOS 14+)
+    // Used only when Qwen3-TTS model is not yet downloaded/ready.
 
-    private let synthesizer: NSSpeechSynthesizer
+    private let synthesizer = AVSpeechSynthesizer()
 
-    /// "" = voz padrão do sistema
-    var voiceIdentifier: String = ""
+    // MARK: - MLX Chatterbox support
 
-    /// Default rate from the synthesizer — captured once at init
-    private var baseRate: Float = 175.0
+    private var mlxCancellable: AnyCancellable?
+    private var mlxPlayingCancellable: AnyCancellable?
+    private var mlxLoadCancellable: AnyCancellable?
+    private var mlxStandbyCancellable: AnyCancellable?
 
     // MARK: - Usage tracking (for Consumo section)
     /// Wall-clock timestamp when playback started (AI or native). nil while not playing.
@@ -135,11 +143,27 @@ final class TTSService: NSObject, ObservableObject {
     // MARK: - Init
 
     private override init() {
-        synthesizer = NSSpeechSynthesizer()
         super.init()
         synthesizer.delegate = self
-        if let rate = (try? synthesizer.object(forProperty: .rate)) as? Float {
-            baseRate = rate
+        // Observa standby do motor MLX para mostrar HUD proactivo (sem interacção do utilizador).
+        // Deve correr no MainActor porque MLXTTSService.shared e $state são @MainActor isolated.
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.mlxStandbyCancellable = MLXTTSService.shared.$state
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] state in
+                    guard let self, !self.isSpeaking else { return }
+                    switch state {
+                    case .standingBy:
+                        self.readingPhase = .standingBy
+                        ReadingHUDWindowController.shared.show()
+                    case .idle where self.readingPhase == .standingBy:
+                        self.readingPhase = .idle
+                        ReadingHUDWindowController.shared.dismiss()
+                    default:
+                        break
+                    }
+                }
         }
     }
 
@@ -183,7 +207,7 @@ final class TTSService: NSObject, ObservableObject {
 
     private func speakInternal(_ text: String) async {
         await MainActor.run {
-            synthesizer.stopSpeaking()
+            synthesizer.stopSpeaking(at: .immediate)
             isSpeaking = false
             isPaused = false
             stopPlaybackKeyMonitor()
@@ -202,8 +226,125 @@ final class TTSService: NSObject, ObservableObject {
         // AppleTranslationService.swift existe no disco mas ainda não está linkado no projeto Xcode.
         // Até ser adicionado ao build target, a tradução TTS fica desactivada — texto original é lido.
         let textToSpeak = text
+        let settings = loadSettings()
 
-        await MainActor.run { speakNative(textToSpeak) }
+        if settings.ttsEngine == .chatterbox {
+            let captured = textToSpeak
+            let capturedSettings = settings
+            await MainActor.run { self.speakWithMLX(captured, settings: capturedSettings) }
+        } else {
+            await MainActor.run { speakNative(textToSpeak) }
+        }
+    }
+
+    // MARK: - MLX Chatterbox (must be called from main thread)
+
+    @MainActor
+    private func speakWithMLX(_ text: String, settings: AppSettings) {
+        let mlx = MLXTTSService.shared
+
+        // pt-BR: bypass MLX entirely — Qwen3-TTS has no Brazilian Portuguese codec.
+        let language = settings.ttsLanguage == "auto" ? resolvedSystemTTSLanguage() : settings.ttsLanguage
+        if language.lowercased() == "pt-br" {
+            vfLog("TTSService — pt-BR → native Luciana (bypassing MLX warm-up)")
+            speakNative(text, language: "pt-BR")
+            return
+        }
+
+        // Determine initial HUD phase based on model readiness and JIT state.
+        let initialPhase: ReadingPhase
+        if mlx.state == .idle {
+            initialPhase = mlx.hasEverBeenReady ? .reloading : .warmingUp
+        } else if mlx.isReady && !mlx.hasCompletedFirstGeneration {
+            initialPhase = .warmingUp
+        } else if mlx.isReady {
+            initialPhase = .processing
+        } else {
+            // Loading or error — fall back to native
+            vfLog("TTSService — Chatterbox not ready (state:\(mlx.state)), falling back to system voice")
+            speakNative(text)
+            return
+        }
+
+        isSpeaking = true
+        isPaused = false
+        readingPhase = initialPhase
+        startPlaybackKeyMonitor()
+        ReadingHUDWindowController.shared.show()
+
+        if mlx.state == .idle {
+            // Model was unloaded — trigger reload, then speak when ready.
+            let capturedText = text
+            let capturedSettings = settings
+            mlxLoadCancellable = mlx.$state
+                .filter { $0 == .ready }
+                .first()
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    guard let self else { return }
+                    self.doMLXSpeak(text: capturedText, settings: capturedSettings, mlx: mlx)
+                }
+            Task { await mlx.loadModel() }
+            return
+        }
+
+        doMLXSpeak(text: text, settings: settings, mlx: mlx)
+    }
+
+    @MainActor
+    private func doMLXSpeak(text: String, settings: AppSettings, mlx: MLXTTSService) {
+        let language = settings.ttsLanguage == "auto"
+            ? resolvedSystemTTSLanguage()
+            : settings.ttsLanguage
+
+        // pt-BR: Qwen3-TTS só tem um codec "portuguese" (sotaque PT).
+        // Para sotaque brasileiro autêntico, usa a voz Luciana do macOS (nativa, local, sem warm-up).
+        if language.lowercased() == "pt-br" {
+            vfLog("TTSService — pt-BR → native Luciana voice (Qwen3-TTS has no pt-BR codec)")
+            Task { @MainActor in MLXTTSService.shared.cancel() }
+            mlxCancellable = nil; mlxPlayingCancellable = nil; mlxLoadCancellable = nil
+            speakNative(text, language: "pt-BR")
+            return
+        }
+
+        mlx.speak(text: text, language: language)
+
+        // Muda para .playing quando o áudio começa realmente a tocar.
+        mlxPlayingCancellable = mlx.$isPlayingAudio
+            .filter { $0 }
+            .first()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.readingPhase = .playing
+                self?.playbackStartedAt = Date()
+            }
+
+        // Detecta quando a reprodução termina (isSpeaking → false).
+        mlxCancellable = mlx.$isSpeaking
+            .dropFirst()
+            .filter { !$0 }
+            .first()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.finishMLXPlayback() }
+    }
+
+    @MainActor
+    private func finishMLXPlayback() {
+        recordPlaybackUsage()
+        isSpeaking = false
+        isPaused = false
+        readingPhase = .idle
+        mlxCancellable = nil
+        mlxPlayingCancellable = nil
+        mlxLoadCancellable = nil
+        stopPlaybackKeyMonitor()
+        SystemAudioManager.shared.resumeMedia()
+        ReadingHUDWindowController.shared.dismiss()
+    }
+
+    private func resolvedSystemTTSLanguage() -> String {
+        let iface = Locale.preferredLanguages.first ?? "en"
+        return AppSettings.ttsLanguageForInterface(iface)
     }
 
     func stop() {
@@ -212,7 +353,12 @@ final class TTSService: NSObject, ObservableObject {
 
     func pause() {
         guard isSpeaking && !isPaused else { return }
-        synthesizer.pauseSpeaking(at: .wordBoundary)
+        let settings = loadSettings()
+        if settings.ttsEngine == .chatterbox {
+            Task { @MainActor in MLXTTSService.shared.pause() }
+        } else {
+            synthesizer.pauseSpeaking(at: .word)
+        }
         isPaused = true
         readingPhase = .paused
         vfLog("TTSService — paused")
@@ -220,7 +366,12 @@ final class TTSService: NSObject, ObservableObject {
 
     func resume() {
         guard isSpeaking && isPaused else { return }
-        synthesizer.continueSpeaking()
+        let settings = loadSettings()
+        if settings.ttsEngine == .chatterbox {
+            Task { @MainActor in MLXTTSService.shared.resume() }
+        } else {
+            synthesizer.continueSpeaking()
+        }
         isPaused = false
         readingPhase = .playing
         vfLog("TTSService — resumed")
@@ -228,28 +379,31 @@ final class TTSService: NSObject, ObservableObject {
 
     func setSpeed(_ multiplier: Float) {
         speedMultiplier = multiplier
-        if isSpeaking {
-            try? synthesizer.setObject(NSNumber(value: baseRate * multiplier), forProperty: .rate)
-        }
+        // Live rate change not supported by AVSpeechSynthesizer — takes effect on next utterance
         vfLog("TTSService — speed set to \(multiplier)x")
     }
 
-    // MARK: - Native voice (must be called from main thread)
+    // MARK: - Native voice fallback (AVSpeechSynthesizer, macOS 14+)
 
-    private func speakNative(_ text: String) {
-        applyVoiceAndRate()
-        isSpeaking = synthesizer.startSpeaking(text)
-        isPaused = false
-        vfLog("TTSService — native voice isSpeaking:\(isSpeaking)")
-        if isSpeaking {
-            readingPhase = .playing
-            playbackStartedAt = Date()
-            startPlaybackKeyMonitor()
-            ReadingHUDWindowController.shared.show()
-        } else {
-            readingPhase = .idle
-            ReadingHUDWindowController.shared.dismiss()
+    private func speakNative(_ text: String, language: String? = nil) {
+        let utterance = AVSpeechUtterance(string: text)
+        // Map speedMultiplier (0.5–3.0) into AVSpeech rate range (min–max).
+        let range = AVSpeechUtteranceMaximumSpeechRate - AVSpeechUtteranceMinimumSpeechRate
+        utterance.rate = AVSpeechUtteranceMinimumSpeechRate + range * min(speedMultiplier / 3.0, 1.0)
+        // Select voice by BCP-47 language tag when specified (e.g. "pt-BR" → Luciana).
+        // AVSpeechSynthesisVoice picks the highest-quality installed voice for that locale.
+        if let lang = language, let voice = AVSpeechSynthesisVoice(language: lang) {
+            utterance.voice = voice
+            vfLog("TTSService — native voice: \(voice.name) (\(lang))")
         }
+        synthesizer.speak(utterance)
+        isSpeaking = true
+        isPaused = false
+        vfLog("TTSService — AVSpeechSynthesizer speaking (\(text.prefix(40))…)")
+        readingPhase = .playing
+        playbackStartedAt = Date()
+        startPlaybackKeyMonitor()
+        ReadingHUDWindowController.shared.show()
     }
 
     // MARK: - Stop all (safe to call from any thread)
@@ -257,7 +411,11 @@ final class TTSService: NSObject, ObservableObject {
     private func stopAll() {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.synthesizer.stopSpeaking()
+            self.synthesizer.stopSpeaking(at: .immediate)
+            self.mlxCancellable = nil
+            self.mlxPlayingCancellable = nil
+            self.mlxLoadCancellable = nil
+            Task { @MainActor in MLXTTSService.shared.cancel() }
             self.isSpeaking = false
             self.isPaused = false
             self.truncationNote = nil
@@ -274,20 +432,6 @@ final class TTSService: NSObject, ObservableObject {
             return AppSettings()
         }
         return s
-    }
-
-    private func applyVoiceAndRate() {
-        if voiceIdentifier.isEmpty {
-            synthesizer.setVoice(nil)
-        } else {
-            synthesizer.setVoice(NSSpeechSynthesizer.VoiceName(rawValue: voiceIdentifier))
-        }
-        if let rate = (try? synthesizer.object(forProperty: .rate)) as? Float {
-            baseRate = rate
-        }
-        if speedMultiplier != 1.0 {
-            try? synthesizer.setObject(NSNumber(value: baseRate * speedMultiplier), forProperty: .rate)
-        }
     }
 
     // MARK: - Obter texto selecionado
@@ -337,10 +481,10 @@ final class TTSService: NSObject, ObservableObject {
     }
 }
 
-// MARK: - NSSpeechSynthesizerDelegate
+// MARK: - AVSpeechSynthesizerDelegate
 
-extension TTSService: NSSpeechSynthesizerDelegate {
-    func speechSynthesizer(_ sender: NSSpeechSynthesizer, didFinishSpeaking finishedSpeaking: Bool) {
+extension TTSService: AVSpeechSynthesizerDelegate {
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         DispatchQueue.main.async { [weak self] in
             self?.recordPlaybackUsage()
             self?.isSpeaking = false

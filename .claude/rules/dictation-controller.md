@@ -56,6 +56,37 @@ idle → recording → processing → injecting → idle
 - Usar `NSWorkspace.frontmostApplication` depois do stop é **sempre errado** —
   o utilizador pode ter mudado de app nos 2-5s da pipeline async.
 
+## Substituições de vocabulário — duas vias
+
+`VocabularyManager` divide entradas em duas categorias com base na ambiguidade
+de `wrong`:
+
+- **Inequívocas** (`wrong` não é palavra real PT/EN): proper nouns, marcas,
+  siglas. Aplicadas via regex word-boundary em `apply(to:)` — chamado no
+  Stage 2 do `processRecording`, antes do LLM de formatação.
+
+- **Ambíguas** (`wrong` é palavra real PT/EN, ex.: "mel", "casa", "para"):
+  passadas como `contextualSubstitutions` ao `TextFormattingService.format()`.
+  O LLM judge decide com contexto (concordância, semântica, marca) se aplica
+  cada substituição. Default conservador: **não substituir** salvo se o
+  contexto suporta claramente.
+
+Detecção de ambiguidade: `VocabularyManager.isAmbiguous(wrong:)` usa
+`NSSpellChecker` em PT e EN (cacheado). Multi-palavra ("Rafa Lopes") é
+sempre tratado como inequívoco.
+
+**Quando o LLM não está disponível** (sem chave, offline, autoparagraph
+desligado, privacy mode), as substituições ambíguas **simplesmente não se
+aplicam**. Isto é deliberado — corromper "melhora" → "MEOhora" é pior do que
+não substituir. O hint do Whisper continua activo (`generateWhisperPrompt`).
+
+**Ao alterar este pipeline manter:**
+1. `vocabularyManager.apply()` aplica APENAS inequívocas (regex word-boundary).
+2. `vocabularyManager.ambiguousEntries()` é passado ao `format()` no autoparagraph.
+3. Substituições ambíguas NUNCA são aplicadas por regex — só por LLM judge.
+4. O proxy `/format` recebe `contextual_substitutions` no body (forward-compat
+   — o backend pode implementar o judge sem mudar o cliente).
+
 ## Voice detected
 
 - Fonte única: `liveWordsSeen` (bool). Set em `liveSpeechRecognizer.onRollingWords`

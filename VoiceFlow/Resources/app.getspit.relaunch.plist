@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>app.getspit.relaunch</string>
+
+    <!-- Caminho relativo ao bundle .app (SMAppService.agent resolve-o). -->
+    <key>BundleProgram</key>
+    <string>Contents/MacOS/Spit</string>
+
+    <!-- Só relança em saída anormal ou crash; NSApp.terminate (⌘Q / menu Quit)
+         sai com exit code 0 e NÃO dispara relançamento. -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+
+    <!-- Arrancar no login do user. É a forma padrão para apps menu bar — o launchd
+         passa a ser dono do processo, o que permite KeepAlive funcionar (launchd só
+         monitoriza/relança processos que ele próprio iniciou). Substitui o
+         "Start at login" tradicional (gerido pelo macOS Login Items, que o user
+         pode revogar via Settings → Login Items se quiser). -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Anti-loop: o launchd só relança no máximo a cada 30s. Combina com
+         backoff exponencial nativo se as falhas forem consecutivas. -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <!-- App de UI/menu bar — quer prioridade interactiva. -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>

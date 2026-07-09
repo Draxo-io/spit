@@ -124,9 +124,11 @@ class LiveSpeechRecognizer {
 
     func stop() {
         request?.endAudio()
+        task?.finish()   // finish gracefully first — lets any buffered results through
         task?.cancel()
         request = nil
         task = nil
+        onRollingWords = nil  // clear callback — prevents stale handler from firing on next session
         vfLog("LiveSpeechRecognizer: stopped")
     }
 

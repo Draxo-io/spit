@@ -10,12 +10,12 @@ class OnboardingWindowController: NSWindowController {
 
     private init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 460),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
-        window.title = "Welcome to Spit"
+        window.title = String(localized: "onboarding.window.title", defaultValue: "Welcome to Spit")
         window.center()
         window.isReleasedWhenClosed = false
         super.init(window: window)
@@ -25,19 +25,27 @@ class OnboardingWindowController: NSWindowController {
 
     func showIfNeeded() {
         let completed = UserDefaults.standard.bool(forKey: "onboardingCompleted")
-        guard !completed else { return }
+        vfLog("[Onboarding] showIfNeeded — completed=\(completed)")
+        guard !completed else {
+            vfLog("[Onboarding] já completado, a saltar")
+            return
+        }
         show()
     }
 
     func show() {
+        vfLog("[Onboarding] show() — a configurar janela")
+        let dc = (NSApp.delegate as? AppDelegate)?.dictationController ?? DictationController()
         window?.contentView = NSHostingView(
             rootView: OnboardingView()
                 .environmentObject(CreditsManager.shared)
+                .environmentObject(dc)
         )
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
         window?.center()
+        vfLog("[Onboarding] janela apresentada — frame=\(window?.frame ?? .zero) visible=\(window?.isVisible ?? false)")
     }
 
     override func close() {

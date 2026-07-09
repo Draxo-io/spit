@@ -90,11 +90,6 @@ class DictationController: ObservableObject {
         vfLog("  - AudioRecorder OK")
         localWhisperService = LocalWhisperService.shared
         vfLog("  - LocalWhisperService OK")
-        // Auto-load local model on startup if engine is set to local
-        let startupSettings = loadSettings()
-        if startupSettings.transcriptionEngine == .local {
-            Task { await LocalWhisperService.shared.load(model: startupSettings.localModel) }
-        }
         focusDetector = FocusDetector()
         vfLog("  - FocusDetector OK")
         textInjector = TextInjector()
@@ -286,11 +281,10 @@ class DictationController: ObservableObject {
     private func queueDictationAfterLoad() {
         guard !pendingDictationAfterLoad else { return }
         pendingDictationAfterLoad = true
-        vfLog("queueDictationAfterLoad — model still loading, queuing start")
+        vfLog("queueDictationAfterLoad — model loading, queuing start")
 
-        // Show the menu bar icon in loading state (already handled by MenuBarController).
-        // Additionally send a notification so the user knows what is happening.
-        sendModelWaitNotification()
+        // Mostrar a pill com estado de loading para o utilizador saber o que se passa.
+        HUDCoordinator.shared.modelLoadingStarted()
 
         // Observe isReady: when it flips true, auto-start
         modelReadyCancellable = LocalWhisperService.shared.$isReady
@@ -304,15 +298,6 @@ class DictationController: ObservableObject {
                 vfLog("queueDictationAfterLoad — model ready, auto-starting dictation")
                 Task { await self.startDictation() }
             }
-    }
-
-    private func sendModelWaitNotification() {
-        let content = UNMutableNotificationContent()
-        content.title = String(localized: "Loading local AI…")
-        content.body  = String(localized: "Dictation will start automatically when the model is ready.")
-        content.sound = nil
-        let request = UNNotificationRequest(identifier: "model-loading-\(UUID())", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
     }
 
     // MARK: - TTS Read Selection
@@ -385,13 +370,14 @@ class DictationController: ObservableObject {
             // (This commonly happens after rebuilds — macOS revokes permission when app signature changes)
         }
 
-        // Local engine — if model is still loading, queue and auto-start when ready
+        // Local engine — se o modelo não está pronto (loading ou descarregado por pressão de memória),
+        // recarregar automaticamente e encadear o início do ditado.
         if !localWhisperService.isReady {
-            if localWhisperService.isLoading {
-                queueDictationAfterLoad()
-            } else {
-                showError(String(localized: "Local model not loaded. Open Settings → Local AI."))
+            if !localWhisperService.isLoading {
+                // Modelo descarregado (ex: pressão de memória) — recarregar silenciosamente.
+                Task { await LocalWhisperService.shared.load(model: .small) }
             }
+            queueDictationAfterLoad()
             return
         }
         vfLog("startDictation — local engine, model: \(localWhisperService.loadedModel?.rawValue ?? "?")")

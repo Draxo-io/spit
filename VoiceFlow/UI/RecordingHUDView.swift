@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - RecordingHUDState
 
 enum RecordingHUDState {
+    case loading
     case recording(words: String, startedAt: Date)
     case processing(startedAt: Date)
 }
@@ -73,6 +74,16 @@ struct RecordingHUDView: View {
     @ViewBuilder
     private func contentArea(elapsed: TimeInterval) -> some View {
         switch state {
+        case .loading:
+            HStack(spacing: 6) {
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .frame(width: 12, height: 12)
+                Text("A carregar modelo…")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(.secondary)
+            }
+
         case .recording(let words, _):
             VStack(alignment: .leading, spacing: 2) {
                 Text(words.isEmpty ? "A ouvir…" : "…\(words)")
@@ -113,6 +124,7 @@ struct RecordingHUDView: View {
 
     private var startDate: Date {
         switch state {
+        case .loading:             return Date()
         case .recording(_, let t): return t
         case .processing(let t):   return t
         }
@@ -120,6 +132,7 @@ struct RecordingHUDView: View {
 
     private var indicatorColor: Color {
         switch state {
+        case .loading:    return .secondary
         case .recording:  return .red
         case .processing: return .orange
         }
@@ -127,6 +140,7 @@ struct RecordingHUDView: View {
 
     private var indicatorIcon: String {
         switch state {
+        case .loading:    return "cpu"
         case .recording:  return "mic.fill"
         case .processing: return "waveform"
         }

@@ -21,6 +21,8 @@ struct ReviewHUDView: View {
     @State private var editedText: String
     @State private var translateTarget: String   // "" = sem tradução
     @State private var isTranslating: Bool = false
+    @State private var isEditing: Bool = false
+    @FocusState private var textFieldFocused: Bool
     @State private var wordTokens: [WordToken] = []
     @State private var learnedMessage: String? = nil
     @State private var lastCopied: Bool = false
@@ -265,7 +267,7 @@ struct ReviewHUDView: View {
     private var finalTextBox: some View {
         VStack(alignment: .leading, spacing: 6) {
 
-            // Label row: "TEXTO FINAL" + translation picker
+            // Label row: "TEXTO FINAL" + translation picker (hidden while editing)
             HStack(spacing: 4) {
                 Image(systemName: "checkmark.circle")
                     .font(.system(size: 10))
@@ -282,84 +284,94 @@ struct ReviewHUDView: View {
                         .frame(width: 14, height: 14)
                 }
 
-                Picker("", selection: $translateTarget) {
-                    ForEach(Self.translationLanguages, id: \.code) { lang in
-                        Text(lang.name).tag(lang.code)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(maxWidth: 130)
-                .onChange(of: translateTarget) { newLang in
-                    Task {
-                        isTranslating = true
-                        // A action sincroniza a config global e re-processa o
-                        // último resultado; devolve o texto final (traduzido ou
-                        // o original, quando newLang == "" / "Sem tradução").
-                        if let action = translateAction,
-                           let finalText = await action(sourceForTranslation, newLang) {
-                            editedText = finalText
-                        } else {
-                            editedText = sourceForTranslation
+                if !isEditing {
+                    Picker("", selection: $translateTarget) {
+                        ForEach(Self.translationLanguages, id: \.code) { lang in
+                            Text(lang.name).tag(lang.code)
                         }
-                        rebuildTokens()
-                        isTranslating = false
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 130)
+                    .onChange(of: translateTarget) { newLang in
+                        Task {
+                            isTranslating = true
+                            if let action = translateAction,
+                               let finalText = await action(sourceForTranslation, newLang) {
+                                editedText = finalText
+                            } else {
+                                editedText = sourceForTranslation
+                            }
+                            rebuildTokens()
+                            isTranslating = false
+                        }
                     }
                 }
             }
 
-            // Final text: fixedSize forces the ScrollView to take the content's natural
-            // height — no internal scroll, the window itself grows to fit.
-            // For very long texts the window is capped at 85 % of screen height
-            // by the window controller; beyond that the bottom is clipped
-            // (acceptable — "giant text" case is rare in dictation).
-            ScrollView(.vertical, showsIndicators: false) {
-                AnnotatedTextView(
-                    tokens: wordTokens,
-                    onWordTapped: { /* noop */ },
-                    onCorrect: { original, corrected, addToVocab in
-                        editedText = editedText.replacingOccurrences(of: original, with: corrected)
-                        rebuildTokens()
-                        if addToVocab {
-                            VocabularyManager.shared.add(wrong: original, correct: corrected)
+            // Text area: TextEditor when editing, AnnotatedTextView otherwise.
+            if isEditing {
+                TextEditor(text: $editedText)
+                    .font(.system(size: 14))
+                    .frame(minHeight: 72, maxHeight: 180)
+                    .focused($textFieldFocused)
+                    .scrollContentBackground(.hidden)
+                    .padding(8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 9)
+                            .fill(Color(nsColor: .textBackgroundColor).opacity(0.45))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 9)
+                                    .strokeBorder(Color.accentColor.opacity(0.4), lineWidth: 1)
+                            )
+                    )
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    AnnotatedTextView(
+                        tokens: wordTokens,
+                        onWordTapped: { /* noop */ },
+                        onCorrect: { original, corrected, addToVocab in
+                            editedText = editedText.replacingOccurrences(of: original, with: corrected)
+                            rebuildTokens()
+                            if addToVocab {
+                                VocabularyManager.shared.add(wrong: original, correct: corrected)
+                            }
+                            // Safety net: actualiza clipboard imediatamente com texto corrigido
+                            copyToClipboard(editedText)
+                            withAnimation {
+                                learnedMessage = "Spit vai aprender com esta correção"
+                            }
+                            Task { try? await Task.sleep(nanoseconds: 2_500_000_000); withAnimation { learnedMessage = nil } }
+                        },
+                        onHint: { original in
+                            VocabularyManager.shared.addHint(original)
+                            withAnimation {
+                                learnedMessage = "Dica adicionada — \u{201C}\(original)\u{201D} guardado como contexto"
+                            }
+                            Task { try? await Task.sleep(nanoseconds: 3_000_000_000); withAnimation { learnedMessage = nil } }
                         }
-                        withAnimation {
-                            learnedMessage = "Spit vai aprender com esta correção"
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                            withAnimation { learnedMessage = nil }
-                        }
-                    },
-                    onHint: { original in
-                        VocabularyManager.shared.addHint(original)
-                        withAnimation {
-                            learnedMessage = "Dica adicionada — \u{201C}\(original)\u{201D} guardado como contexto"
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-                            withAnimation { learnedMessage = nil }
-                        }
-                    }
-                )
-                .padding(.horizontal, 10)
-                .padding(.vertical, 9)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                    )
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 9)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
                 .fixedSize(horizontal: false, vertical: true)
-            }
-            .fixedSize(horizontal: false, vertical: true)
-            .background(
-                RoundedRectangle(cornerRadius: 9)
-                    .fill(Color(nsColor: .textBackgroundColor).opacity(0.28))
-            )
-            .overlay(alignment: .bottomTrailing) {
-                if wordTokens.contains(where: { $0.isSuspicious }) {
-                    HStack(spacing: 3) {
-                        Circle().fill(Color.red.opacity(0.7)).frame(width: 4, height: 4)
-                        Text("Clica para corrigir")
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary.opacity(0.7))
+                .background(
+                    RoundedRectangle(cornerRadius: 9)
+                        .fill(Color(nsColor: .textBackgroundColor).opacity(0.28))
+                )
+                .overlay(alignment: .bottomTrailing) {
+                    if wordTokens.contains(where: { $0.isSuspicious }) {
+                        HStack(spacing: 3) {
+                            Circle().fill(Color.red.opacity(0.7)).frame(width: 4, height: 4)
+                            Text("Clica para corrigir")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary.opacity(0.7))
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
                     }
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
                 }
             }
         }
@@ -368,41 +380,73 @@ struct ReviewHUDView: View {
     // MARK: - Action Row (success)
 
     private var actionRow: some View {
-        HStack {
-            Spacer()
-            Button {
-                copyToClipboard(editedText)
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) { lastCopied = true }
-                // Feedback "Copiado" curto e depois fecha o HUD — o user já não vai
-                // fazer mais nada aqui (o objetivo foi copiar). Se ainda houver
-                // edições por copiar, ele reabre via menu bar.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    dismiss()
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: lastCopied ? "checkmark.circle.fill" : "doc.on.clipboard.fill")
+        HStack(spacing: 8) {
+            if isEditing {
+                // Modo edição: Save & copy + Cancel
+                Button {
+                    copyToClipboard(editedText)
+                    isEditing = false
+                    rebuildTokens()
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) { lastCopied = true }
+                    Task { try? await Task.sleep(nanoseconds: 700_000_000); dismiss() }
+                } label: {
+                    Label("Guardar e copiar", systemImage: "doc.on.clipboard")
                         .font(.system(size: 12, weight: .medium))
-                    Text(lastCopied ? "Copiado" : "Copiar")
-                        .font(.system(size: 13, weight: .semibold))
                 }
-                .foregroundColor(.white)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 7)
-                .background(
-                    Capsule()
-                        .fill(lastCopied
-                              ? Color(red: 0.18, green: 0.72, blue: 0.42)   // green
-                              : Color(red: 0.04, green: 0.52, blue: 1.00))  // vivid blue
-                        .shadow(color: lastCopied
-                                ? Color(red: 0.18, green: 0.72, blue: 0.42).opacity(0.35)
-                                : Color(red: 0.04, green: 0.52, blue: 1.00).opacity(0.35),
-                                radius: 6, x: 0, y: 3)
-                )
-                .scaleEffect(lastCopied ? 1.03 : 1.0)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+
+                Button("Cancelar") {
+                    editedText = result.correctedText
+                    isEditing = false
+                    rebuildTokens()
+                }
+                .font(.system(size: 12))
+                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
+
+            } else {
+                // Modo normal: Edit + Copiar
+                Button {
+                    isEditing = true
+                    Task { try? await Task.sleep(nanoseconds: 100_000_000); textFieldFocused = true }
+                } label: {
+                    Label("Editar", systemImage: "pencil")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Spacer()
+
+                Button {
+                    copyToClipboard(editedText)
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) { lastCopied = true }
+                    Task { try? await Task.sleep(nanoseconds: 600_000_000); dismiss() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: lastCopied ? "checkmark.circle.fill" : "doc.on.clipboard.fill")
+                            .font(.system(size: 12, weight: .medium))
+                        Text(lastCopied ? "Copiado" : "Copiar")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 7)
+                    .background(
+                        Capsule()
+                            .fill(lastCopied
+                                  ? Color(red: 0.18, green: 0.72, blue: 0.42)
+                                  : Color(red: 0.04, green: 0.52, blue: 1.00))
+                            .shadow(color: lastCopied
+                                    ? Color(red: 0.18, green: 0.72, blue: 0.42).opacity(0.35)
+                                    : Color(red: 0.04, green: 0.52, blue: 1.00).opacity(0.35),
+                                    radius: 6, x: 0, y: 3)
+                    )
+                    .scaleEffect(lastCopied ? 1.03 : 1.0)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            Spacer()
         }
     }
 

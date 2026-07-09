@@ -57,6 +57,15 @@ struct AboutView: View {
                 #endif
             }
 
+            Button {
+                (NSApp.delegate as? AppDelegate)?.checkForUpdates()
+            } label: {
+                Label("Check for Updates", systemImage: "arrow.down.circle")
+                    .font(.subheadline)
+            }
+            .buttonStyle(.bordered)
+            .padding(.top, 2)
+
             Text("AI-powered dictation for macOS.")
                 .font(.body)
                 .foregroundColor(.secondary)

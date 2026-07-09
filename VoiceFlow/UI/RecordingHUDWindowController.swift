@@ -2,9 +2,9 @@ import AppKit
 import SwiftUI
 
 // MARK: - RecordingHUDWindowController
-// Manages the small floating panel shown during recording and processing.
-// Appears at the bottom-right of the screen, anchored to the same corner as ReviewHUD.
-// Transitions from recording → processing state, then dismisses when ReviewHUD appears.
+// Floating pill shown from recording start until the ReviewHUD appears.
+// Uses .popUpMenu level (same as the menu bar panel) to ensure reliable visibility
+// even when Spit is a UIElement app and another app is focused.
 
 class RecordingHUDWindowController: NSWindowController {
 
@@ -12,108 +12,129 @@ class RecordingHUDWindowController: NSWindowController {
 
     private var hudState: RecordingHUDState = .recording(words: "", startedAt: Date())
     private var recordingStartedAt: Date = Date()
-    private var hostingView: NSHostingView<RecordingHUDView>?
+    private var dismissTask: DispatchWorkItem?
 
     private init() {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 300, height: 44),
+            contentRect: NSRect(x: 0, y: 0, width: 300, height: 52),
             styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered,
-            defer: false
+            defer: true
         )
-        panel.level = .floating
+        panel.level = .popUpMenu             // must match menu bar panel — .floating is too low for UIElement apps
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true   // system shadow from alpha mask → follows rounded pill shape
+        panel.hasShadow = true
         panel.isMovableByWindowBackground = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.isReleasedWhenClosed = false
         super.init(window: panel)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
+    // MARK: - Show (loading state — modelo a recarregar)
+
+    func showLoading() {
+        let work = { [self] in
+            dismissTask?.cancel()
+            dismissTask = nil
+            hudState = .loading
+            presentWithState()
+        }
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
+    }
+
     // MARK: - Show (recording state)
 
     func showRecording() {
-        recordingStartedAt = Date()
-        hudState = .recording(words: "", startedAt: recordingStartedAt)
-        // Force view recreation so @State elapsed resets to 0 for this session
-        hostingView = nil
-        presentWithState()
+        let work = { [self] in
+            dismissTask?.cancel()
+            dismissTask = nil
+            recordingStartedAt = Date()
+            hudState = .recording(words: "", startedAt: recordingStartedAt)
+            presentWithState()
+        }
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     // MARK: - Update rolling words
 
     func updateWords(_ words: String) {
-        // Guard: late async callbacks from LiveSpeechRecognizer can fire after
-        // transitionToProcessing() — ignore them so the "Transcribing…" label sticks.
-        guard case .recording = hudState else { return }
-        hudState = .recording(words: words, startedAt: recordingStartedAt)
-        refreshView()
+        let work = { [self] in
+            guard case .recording = hudState else { return }
+            hudState = .recording(words: words, startedAt: recordingStartedAt)
+            updateContent()
+        }
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     // MARK: - Transition to processing
 
     func transitionToProcessing() {
-        hudState = .processing(startedAt: Date())
-        refreshView()
+        let work = { [self] in
+            hudState = .processing(startedAt: Date())
+            updateContent()
+        }
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
     }
 
     // MARK: - Dismiss
 
     func dismiss() {
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.15
-            window?.animator().alphaValue = 0
-        } completionHandler: { [weak self] in
-            self?.window?.orderOut(nil)
+        DispatchQueue.main.async { [weak self] in
+            self?.dismissTask?.cancel()
+            guard let self, let _ = self.window else { return }
+            let work = DispatchWorkItem { [weak self] in
+                guard let self, let window = self.window else { return }
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = 0.15
+                    window.animator().alphaValue = 0
+                } completionHandler: {
+                    window.orderOut(nil)
+                }
+            }
+            self.dismissTask = work
+            DispatchQueue.main.async(execute: work)
         }
     }
 
     // MARK: - Private
 
     private func presentWithState() {
-        // Usar o monitor onde está o cursor do rato (monitor ativo)
+        guard let window = window else { return }
+
         let mouseLocation = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: {
             NSMouseInRect(mouseLocation, $0.frame, false)
-        }) ?? NSScreen.main
+        }) ?? NSScreen.main ?? NSScreen.screens.first
         guard let screen = screen else { return }
 
-        let windowWidth: CGFloat = 300
-        let windowHeight: CGFloat = 44
+        let windowWidth: CGFloat  = 300
         let screenRect = screen.visibleFrame
         let margin: CGFloat = 20
-        // Align to the right edge — same anchor as ReviewHUD (360px wide, same margin)
-        // This makes the transition seamless: RecordingHUD right-aligns with ReviewHUD right edge
+
+        // Right-align with ReviewHUD (360px wide) so the transition is seamless
         let reviewHUDWidth: CGFloat = 360
         let x = screenRect.maxX - reviewHUDWidth - margin + (reviewHUDWidth - windowWidth)
         let y = screenRect.minY + margin
 
-        window?.setFrame(NSRect(x: x, y: y, width: windowWidth, height: windowHeight),
-                         display: false)
+        let view = RecordingHUDView(state: hudState)
+        let hosting = NSHostingView(rootView: view)
 
-        refreshView()
-
-        window?.alphaValue = 0
-        window?.orderFrontRegardless()
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.18
-            window?.animator().alphaValue = 1
-        }
+        // Set fixed height — avoids _NSDetectedLayoutRecursion from calling fittingSize
+        // before the hosting view is in the window hierarchy.
+        window.setFrame(NSRect(x: x, y: y, width: windowWidth, height: 52), display: false)
+        window.contentView = hosting
+        window.alphaValue = 1
+        window.orderFrontRegardless()
     }
 
-    private func refreshView() {
-        let view = RecordingHUDView(state: hudState)
-
-        if let existing = hostingView {
-            existing.rootView = view
-        } else {
-            let hosting = NSHostingView(rootView: view)
-            hosting.frame = window?.contentView?.bounds ?? .zero
-            window?.contentView = hosting
-            hostingView = hosting
+    private func updateContent() {
+        guard let hosting = window?.contentView as? NSHostingView<RecordingHUDView> else {
+            presentWithState()
+            return
         }
+        hosting.rootView = RecordingHUDView(state: hudState)
     }
 }

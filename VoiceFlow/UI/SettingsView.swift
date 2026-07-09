@@ -83,6 +83,7 @@ struct SettingsView: View {
     @EnvironmentObject var vocabularyManager: VocabularyManager
     @ObservedObject private var licenseManager: LicenseManager = .shared
     @ObservedObject private var localWhisper: LocalWhisperService = .shared
+    @ObservedObject private var mlxTTS: MLXTTSService = .shared
 
     @State private var selectedTab: SettingsTab = .general
     @State private var settings: AppSettings = {
@@ -331,13 +332,6 @@ struct SettingsView: View {
 
     private var dictationTab: some View {
         Form {
-            // MARK: Modelo local
-            Section {
-                localModelPicker
-            } header: {
-                Label("Modelo de reconhecimento", systemImage: "cpu.fill")
-            }
-
             // MARK: Aprimoramento de Texto
             Section {
                 Toggle(isOn: $settings.autoparagraphEnabled) {
@@ -369,7 +363,7 @@ struct SettingsView: View {
             }
 
             if settings.ttsEnabled {
-                Section("Voz") {
+                Section("Voz IA local") {
                     ttsSection
                 }
             }
@@ -379,81 +373,6 @@ struct SettingsView: View {
     }
 
     // MARK: - Privacy Tab
-
-    // localAISection removed — model picker moved to APIs tab
-
-    private var localModelPicker: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Axis label
-            HStack {
-                Label("Faster", systemImage: "bolt.fill")
-                    .font(.caption2).foregroundColor(.secondary)
-                Spacer()
-                Label("More accurate", systemImage: "star.fill")
-                    .font(.caption2).foregroundColor(.secondary)
-            }
-
-            // Model cards
-            HStack(spacing: 6) {
-                ForEach(LocalWhisperModel.allCases, id: \.self) { model in
-                    LocalModelCard(
-                        model: model,
-                        isSelected: settings.localModel == model,
-                        onTap: {
-                            settings.localModel = model
-                            save()
-                            Task { await LocalWhisperService.shared.load(model: model) }
-                        }
-                    )
-                }
-            }
-
-            // Download / status row
-            HStack(spacing: 8) {
-                if localWhisper.isLoading {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                        .frame(width: 16, height: 16)
-                    Text("Loading model…")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                } else if localWhisper.isReady && localWhisper.loadedModel == settings.localModel {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                        .font(.caption)
-                    Text("Ready")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                } else {
-                    if let err = localWhisper.errorMessage {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.red)
-                            .font(.caption)
-                        Text(err)
-                            .font(.caption)
-                            .foregroundColor(.red)
-                            .lineLimit(2)
-                    } else {
-                        Image(systemName: "arrow.down.circle")
-                            .foregroundColor(.secondary)
-                            .font(.caption)
-                        Text("\(settings.localModel.sizeLabel) download")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer()
-                    Button {
-                        Task { await LocalWhisperService.shared.load(model: settings.localModel) }
-                    } label: {
-                        Text(localWhisper.errorMessage != nil ? "Retry" : "Load model")
-                            .font(.caption)
-                    }
-                    .disabled(localWhisper.isLoading)
-                }
-                Spacer()
-            }
-        }
-    }
 
     // MARK: - Vocabulary Tab
 
@@ -683,40 +602,120 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - TTS Voice Section (Reading tab — no hotkey config here)
+    // MARK: - TTS Voice Section (Reading tab)
 
     private var ttsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // System voice picker
-            if !availableVoices.isEmpty {
-                HStack(spacing: 10) {
-                    Text("Voz do sistema")
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Picker("", selection: Binding(
-                        get: { settings.ttsVoiceIdentifier },
-                        set: { id in
-                            settings.ttsVoiceIdentifier = id
-                            TTSService.shared.voiceIdentifier = id
-                            save()
-                        }
-                    )) {
-                        Text("Padrão").tag("")
-                        Divider()
-                        ForEach(availableVoices) { voice in
-                            Text("\(voice.name)  \(voice.languageTag)")
-                                .tag(voice.identifier)
-                        }
+            // Language picker — pre-selected to interface language
+            HStack(spacing: 10) {
+                Text("Idioma")
+                    .foregroundColor(.secondary)
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { resolvedTTSLanguage },
+                    set: { lang in
+                        settings.ttsLanguage = lang
+                        save()
                     }
-                    .frame(maxWidth: 180)
-                    .labelsHidden()
+                )) {
+                    ForEach(MLXVoice.all) { v in
+                        Text("\(v.flag)  \(v.langName)").tag(v.id)
+                    }
+                }
+                .frame(maxWidth: 220)
+                .labelsHidden()
+            }
+
+            // Inactivity timeout picker
+            HStack {
+                Text("Libertar motor após inatividade")
+                    .foregroundColor(.secondary)
+                Spacer()
+                Picker("", selection: Binding(
+                    get: { settings.ttsInactivityMinutes },
+                    set: { settings.ttsInactivityMinutes = $0; save() }
+                )) {
+                    Text("10 min").tag(10)
+                    Text("20 min").tag(20)
+                    Text("30 min").tag(30)
+                    Text("1 hora").tag(60)
+                    Text("Nunca").tag(0)
+                }
+                .frame(maxWidth: 120)
+                .labelsHidden()
+            }
+
+            // Model status row
+            HStack(spacing: 8) {
+                switch mlxTTS.state {
+                case .idle:
+                    Image(systemName: "arrow.down.circle")
+                        .foregroundColor(.secondary).font(.caption)
+                    Text("Qwen3-TTS (~250 MB) — não descarregado")
+                        .font(.caption).foregroundColor(.secondary)
+                    Spacer()
+                    Button("Descarregar modelo") {
+                        Task { await MLXTTSService.shared.loadModel() }
+                    }
+                    .font(.caption)
+
+                case .loading:
+                    ProgressView().scaleEffect(0.7).frame(width: 16, height: 16)
+                    Text("A descarregar modelo de voz…")
+                        .font(.caption).foregroundColor(.secondary)
+                    Spacer()
+
+                case .standingBy:
+                    ProgressView().scaleEffect(0.7).frame(width: 16, height: 16)
+                    Text("A colocar em standby…")
+                        .font(.caption).foregroundColor(.secondary)
+                    Spacer()
+
+                case .ready:
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green).font(.caption)
+                    Text("Modelo pronto")
+                        .font(.caption).foregroundColor(.secondary)
+                    Spacer()
+
+                case .error(let msg):
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.red).font(.caption)
+                    Text(msg)
+                        .font(.caption).foregroundColor(.red).lineLimit(2)
+                    Spacer()
+                    Button("Tentar novamente") {
+                        Task { await MLXTTSService.shared.loadModel() }
+                    }
+                    .font(.caption)
                 }
             }
         }
         .onAppear {
-            if availableVoices.isEmpty { availableVoices = TTSVoiceOption.all() }
-            TTSService.shared.voiceIdentifier = settings.ttsVoiceIdentifier
+            // Kick off model load automatically when user opens Settings → Reading
+            if mlxTTS.state == .idle {
+                Task { await MLXTTSService.shared.loadModel() }
+            }
+            // Persist the resolved language so TTSService can read it
+            if settings.ttsLanguage == "auto" {
+                settings.ttsLanguage = resolvedTTSLanguage
+                save()
+            }
         }
+    }
+
+    /// Interface language resolved to a supported MLX TTS language code (never "auto").
+    private var resolvedTTSLanguage: String {
+        if settings.ttsLanguage != "auto" && !settings.ttsLanguage.isEmpty {
+            // Already set — return as-is (could be from migration or user pick)
+            let lang = settings.ttsLanguage
+            return MLXVoice.supportedIDs.contains(lang) ? lang : "en"
+        }
+        // Derive from interface language
+        let iface = settings.interfaceLanguage == "system"
+            ? (Locale.preferredLanguages.first ?? "en")
+            : settings.interfaceLanguage
+        return AppSettings.ttsLanguageForInterface(iface)
     }
 
 
@@ -939,64 +938,6 @@ struct SettingsView: View {
             }
             .padding(.vertical, 2)
         }
-    }
-}
-
-// MARK: - LocalModelCard
-
-private struct LocalModelCard: View {
-    let model: LocalWhisperModel
-    let isSelected: Bool
-    let onTap: () -> Void
-
-    var body: some View {
-        VStack(spacing: 5) {
-            Text(model.displayName)
-                .font(.system(size: 11, weight: .semibold))
-                .lineLimit(1)
-
-            // Speed dots (bolt icons)
-            HStack(spacing: 1) {
-                ForEach(0..<4, id: \.self) { i in
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 7))
-                        .foregroundColor(i < model.speedRank ? .yellow : Color.secondary.opacity(0.2))
-                }
-            }
-
-            // Quality dots (star icons)
-            HStack(spacing: 1) {
-                ForEach(0..<4, id: \.self) { i in
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 7))
-                        .foregroundColor(i < model.qualityRank ? .accentColor : Color.secondary.opacity(0.2))
-                }
-            }
-
-            Text(model.sizeLabel)
-                .font(.system(size: 9))
-                .foregroundColor(.secondary)
-
-            Text(model.typicalLatency)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundColor(isSelected ? .accentColor : .secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .padding(.horizontal, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isSelected
-                      ? Color.accentColor.opacity(0.12)
-                      : Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
-        .animation(.easeInOut(duration: 0.15), value: isSelected)
     }
 }
 

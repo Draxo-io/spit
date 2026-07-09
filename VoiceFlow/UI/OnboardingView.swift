@@ -360,6 +360,19 @@ struct OnboardingView: View {
 
     private func finishOnboarding() {
         UserDefaults.standard.set(true, forKey: "onboardingCompleted")
+
+        // Pré-carregar o modelo Whisper agora: o utilizador acabou de dar
+        // permissões e está prestes a fazer o primeiro ditado, por isso o
+        // modelo fica pronto e o primeiro Globe é instantâneo.
+        //
+        // IMPORTANTE: fazê-lo AQUI (fim do onboarding), e não em setup()/arranque.
+        // O onboarding só corre uma vez, por isso os relançamentos automáticos do
+        // LaunchAgent (ex.: após um Jetsam kill) NÃO recarregam o modelo — é o que
+        // evita o death-loop de memória documentado na nota Kogno do Jetsam.
+        if dictationController.loadSettings().transcriptionEngine == .local {
+            Task { await LocalWhisperService.shared.load(model: .small) }
+        }
+
         OnboardingWindowController.shared.close()
     }
 

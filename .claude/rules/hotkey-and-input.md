@@ -38,8 +38,14 @@ paths:
 
 ## TextInjector — ordem de tentativas
 
-1. **AX API** primeiro, quando há `precapturedElement` e app-alvo activo.
-2. **Clipboard + ⌘V** quando AX falha mas app-alvo tem foco.
+1. **AX API** primeiro, quando há `precapturedElement` e app-alvo activo
+   **e** o bundleID **não** está em `axUnreliableBundleIDs`.
+2. **Clipboard + ⌘V** quando:
+   - AX falha mas app-alvo tem foco, OU
+   - app-alvo está em `axUnreliableBundleIDs` (Electron/Catalyst onde
+     `kAXSelectedTextAttribute` retorna `.success` mas não insere texto:
+     WhatsApp, Slack, Discord, Teams, Telegram, ChatGPT, Claude, Notion,
+     Obsidian, Zoom, Spotify, Cursor).
 3. **Clipboard apenas** quando AX não está trustada (mostra ReviewHUD com
    instruções).
 
@@ -55,6 +61,43 @@ paths:
   fields. `FocusDetector.hasFocusedWindow()` distingue:
     - Window sim, AX element não → Electron com campo → paste funciona.
     - Nem window nem AX → sem campo de todo → mostra banner.
+
+- No caminho blacklist (`.injectedViaClipboardPaste`) o clipboard **é sempre
+  restaurado** após 0.6s (vs 0.4s no caminho normal) — delay suficiente para
+  o Electron/Catalyst processar o Cmd+V antes do restore. Fix 2026-04-30:
+  anteriormente não restaurava, destruindo o clipboard do utilizador em cada
+  ditado para Electron apps. Em caso raro de paste engolido silenciosamente
+  (modal/overlay), o utilizador perde o texto no clipboard — aceite como
+  trade-off, pois preservar o clipboard é mais importante.
+
+## Regra de apresentação do banner "Sem campo ativo"
+
+**Princípio:** o banner só aparece quando o Spit *não tem certeza* se o
+paste chegou ao destino. Em apps blacklisted o paste funciona quase sempre
+→ banner ficaria ruidoso → não mostrar.
+
+Decisão é tomada em `DictationController.processRecording` ao mapear o
+`InjectionResult` para flags do `DictationResult`:
+
+| Caminho de injecção | `pastedViaClipboard` | `usedKeyboardFallback` | Banner? |
+|---|---|---|---|
+| `.injectedViaAX` | false | false | ❌ |
+| `.injectedViaKeyboard` (tem AX, sem field) | false | true se `noField` | ✅ se noField |
+| `.injectedViaKeyboard` (clipboard+V por sem AX) | false | `isFinderOrLikelyNoField` | ✅ só se sem janela |
+| `.injectedViaClipboardPaste` (blacklist) | **false** | **false** | ❌ |
+| `.copiedToClipboard` (AX não trusted) | true | false | ✅ (warningBanner) |
+| `.failed(...)` | true | false | ✅ |
+
+`usedKeyboardFallback = true` só quando: `targetBundleID == "com.apple.finder"`
+**OR** (`!hadCapturedAXElement && !hadFocusedWindow`).
+
+**Ao alterar `TextInjector` ou esta lógica, manter:**
+1. Apps blacklisted **não** disparam banner — texto vai silenciosamente para
+   clipboard como safety net.
+2. Banner só dispara quando há evidência real de falha (sem AX **e** sem
+   janela, ou Finder, ou AX não-trustada, ou injection failed).
+3. Para acrescentar app à blacklist: editar `axUnreliableBundleIDs` em
+   `TextInjector.swift` — não criar nova lista paralela.
 
 ## FocusDetector
 

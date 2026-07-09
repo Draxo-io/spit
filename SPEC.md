@@ -349,6 +349,15 @@ Ao desativar, a configuração deve voltar exatamente como está antes.
 ## 7. Painel de Revisão de Ditado ✅
 
 *Painel sobreposto ao ecrã, exibido após a transcrição ser concluída.*
+
+### Quando abre
+- **Manualmente** — clique no ícone da barra de menus → "Última digitação".
+- **Automaticamente** — sempre que o texto transcrito **não chegou ao destino**
+  e ficou apenas no clipboard (por falta de permissão de Acessibilidade, ou por
+  falha de inserção). Nestes casos o painel abre sozinho a mostrar o texto e a
+  área de alertas com a instrução de colar manualmente (⌘V), para que o texto
+  nunca "desapareça" sem o utilizador o ver.
+
 ### Conteúdo
 
 | Elemento | Detalhe |

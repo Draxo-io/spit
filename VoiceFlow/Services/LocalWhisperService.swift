@@ -56,11 +56,18 @@ class LocalWhisperService: ObservableObject {
             let modelsDir = appSupport.appendingPathComponent("Spit/WhisperModels", isDirectory: true)
             try? FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
 
+            // Purga de modelos antigos: apaga qualquer modelo em cache que não seja o
+            // que vamos usar. Evita acumulação (ex: large-v3, base de versões com
+            // seletor de modelo) que enchia o disco e agravava a pressão de memória
+            // → Jetsam. Só corre uma vez por sessão (guard).
+            purgeOtherModels(keeping: model, in: modelsDir)
+
             let newKit = try await WhisperKit(
                 model: model.rawValue,
                 downloadBase: modelsDir,
                 verbose: false,
-                logLevel: .none
+                logLevel: .none,
+                prewarm: true
             )
             kit = newKit
             loadedModel = model
@@ -74,6 +81,50 @@ class LocalWhisperService: ObservableObject {
         }
 #else
         errorMessage = "WhisperKit not installed. In Xcode: File → Add Package Dependencies → https://github.com/argmaxinc/WhisperKit"
+#endif
+    }
+
+    // MARK: - Purga de modelos antigos
+
+    /// Corre no máximo uma vez por sessão.
+    private var didPurge = false
+
+    /// Apaga do disco qualquer modelo WhisperKit em cache que não seja `keep`.
+    /// O layout do WhisperKit é `<base>/models/argmaxinc/whisperkit-coreml/<modelo>`.
+    /// O tokenizer (`models/openai/...`) é pequeno e NÃO é tocado.
+    private func purgeOtherModels(keeping keep: LocalWhisperModel, in base: URL) {
+        guard !didPurge else { return }
+        didPurge = true
+
+        let coremlDir = base
+            .appendingPathComponent("models/argmaxinc/whisperkit-coreml", isDirectory: true)
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: coremlDir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for url in entries {
+            let name = url.lastPathComponent
+            // Manter só a pasta do modelo em uso; ignorar ficheiros soltos.
+            guard url.hasDirectoryPath, name != keep.rawValue else { continue }
+            do {
+                try fm.removeItem(at: url)
+                vfLog("LocalWhisperService — purgado modelo antigo não usado: '\(name)'")
+            } catch {
+                vfLog("LocalWhisperService — falha a purgar '\(name)': \(error.localizedDescription)")
+            }
+        }
+    }
+
+    // MARK: - Unload (memory pressure / sleep)
+
+    func unload() async {
+#if canImport(WhisperKit)
+        guard isReady else { return }
+        kit = nil
+        isReady = false
+        loadedModel = nil
+        vfLog("LocalWhisperService — modelo descarregado (pressão de memória)")
 #endif
     }
 

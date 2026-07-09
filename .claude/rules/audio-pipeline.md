@@ -32,13 +32,8 @@ Estas regras já custaram horas de debugging. **Não violar sem ler `CHANGELOG.m
 
 ## SystemAudioManager (pausar/retomar media)
 
-- **NÃO enviar sempre `NX_KEYTYPE_PLAY`.** Se nenhum app estiver registado como
-  now-playing (PID = 0), o macOS captura a key e **abre o Apple Music**.
-  Verifica `MRMediaRemoteGetNowPlayingApplicationPID` primeiro; se PID = 0,
-  skip. Fix: 2026-04-21 (ver `CHANGELOG.md`).
-
-- `MRMediaRemoteGetNowPlayingApplicationIsPlaying` **mente em Bluetooth HFP**
-  (retorna `false` com música a tocar). Por isso usamos PID, não isPlaying.
+- **MRMediaRemote (API privada) foi REMOVIDA — não reintroduzir.** Rejeitada
+  pela App Store. Toda a detecção de estado migrou para vias públicas.
 
 - `didPauseMedia` garante que `resumeMedia()` só re-envia a key se **nós** é
   que pausámos. Não confiar no estado actual do sistema para isto.
@@ -54,13 +49,35 @@ Estas regras já custaram horas de debugging. **Não violar sem ler `CHANGELOG.m
   vêem. Spotify desktop, Apple Music e similares funcionam em ambos. Fix:
   2026-04-27 (Google Music em Chrome não pausava).
 
-- **Fallback para output device activo (Core Audio).** Chrome / browsers a
-  tocar via web frequentemente NÃO registam no MediaRemote — `nowPlayingPID`
-  retorna 0. Solução: quando PID = 0, verificar
-  `kAudioDevicePropertyDeviceIsRunningSomewhere` no default output device.
-  Se há áudio a sair, é seguro enviar play/pause (já há algum app a tocar,
-  não vamos abrir Apple Music). Se output silencioso, manter o skip
-  (preserva o fix anti-Apple-Music). Fix: 2026-04-27.
+- **Detecção de estado: 3 fases em cascata — nunca colapsar para 1.**
+  `kAudioDevicePropertyDeviceIsRunningSomewhere` retorna `true` mesmo com media
+  PAUSADA (I/O proc activo para retoma rápida) — por isso sozinho NÃO chega.
+  Sequência correcta em `isOutputDeviceActive()`:
+
+  **Fase 1 — gate rápido:** `DeviceIsRunningSomewhere == 0` → nada a tocar → return false.
+
+  **Fase 2 — Apple Events para players desktop conhecidos (Spotify, Music, QuickTime Player):**
+  - `true` → a tocar → pausar.
+  - `false` (player a correr mas PAUSADO, nenhum a tocar) → skip key.
+  - `nil` (player não corre / sem permissão) → passar à fase 3.
+  Helpers: `isPlayerPlaying(appName:bundleID:)` para Spotify/Music,
+  `isQuickTimePlayerPlaying()` para QuickTime Player (usa `rate of first document`).
+  **Só envia Apple Event se o app já estiver em execução** (check `NSWorkspace.runningApplications`)
+  — caso contrário `tell application "Spotify"` LANÇARIA o Spotify.
+
+  **Fase 3 — return false (conservador). ← FIX 2026-06-23**
+  `DeviceIsRunning` NÃO distingue browser pausado de browser a tocar:
+  - Spotify Web em Chrome mantém `DeviceIsRunning = 1` mesmo pausado.
+  - AVAudioEngine do Spit (TTS) também faz `DeviceIsRunning = 1`.
+  Enviar a key nestas condições inicia media pausada. Fase 3 retorna sempre `false`.
+  Trade-off: browsers a tocar não são auto-pausados — aceite.
+
+- **NÃO voltar ao DistributedNotificationCenter para o Spotify.** O Spotify
+  desktop recente já não posta `com.spotify.client.PlaybackStateChanged`, por
+  isso o estado ficava eternamente `nil` e o bug "retoma música pausada ao
+  iniciar ditado" persistia. Causa raiz confirmada nos logs 2026-05-22 (zero
+  notificações Spotify alguma vez recebidas). Fix definitivo: Apple Events
+  2026-05-22.
 
 ## LiveSpeechRecognizer
 
@@ -73,7 +90,15 @@ Estas regras já custaram horas de debugging. **Não violar sem ler `CHANGELOG.m
   Speech framework não tem tempo de produzir palavras. Isto é **esperado** —
   resulta em "Nenhuma voz detectada" no ReviewHUD. **Não é bug.**
 
-- O recognizer precisa de locale BCP-47 (ex.: `pt-BR`, `en-US`). Quando
-  `settings.language == "auto"`, usa `lastDetectedLanguage` do Whisper da
-  sessão anterior. Mapeamento de nomes Whisper ("Portuguese") → BCP-47 ("pt")
-  feito em `DictationController.normalizeWhisperLang()`.
+- O recognizer precisa de locale BCP-47 (ex.: `pt-BR`, `en-US`). Mapeamento de
+  nomes Whisper ("Portuguese") → BCP-47 ("pt") em
+  `DictationController.normalizeWhisperLang()`.
+
+- **Quando `settings.language == "auto"`, passar `"auto"` ao recognizer** — NÃO
+  usar `lastDetectedLanguage` da sessão anterior (corrigido 2026-05-26). O
+  recognizer resolve via `NSLocale.preferredLanguages.first` (idioma do macOS),
+  o proxy mais robusto. Causa do bug anterior: em "auto", o `lastDetectedLanguage`
+  ficava preso no idioma da última sessão — se o user fez uma sessão acidental
+  em EN, as seguintes mostravam preview em inglês mesmo a ditar em PT. O Whisper
+  na transcrição faz auto-detect real do áudio, pelo que o texto final fica
+  correto independentemente do que o live preview mostra.

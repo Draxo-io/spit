@@ -31,15 +31,34 @@ Para histórico de bugs corrigidos → `CHANGELOG.md`.
 > spec funcional de produto, autenticação) e uma auditoria só é completa
 > quando cobre todas.
 
+## Build de desenvolvimento vs produção — SEPARADAS (2026-07-07)
+
+A build de **Debug** é uma app distinta da de produção, para poderem coexistir
+e ser testadas em simultâneo sem conflito:
+
+| | Debug ("Spit Dev") | Release (produção) |
+|---|---|---|
+| Bundle ID | `app.getspit.dev` | `app.getspit` |
+| Ícone na barra | martelo 🔨 | waveform |
+| Hotkey default | ⌥ Option direito (keyCode 61) | Globe 🌐 (keyCode 63) |
+| Auto-relaunch (LaunchAgent) | **desligado** | ligado |
+| Container/definições/log | isolados em `app.getspit.dev` | `app.getspit` |
+
+Isto resolveu o bug em que ter as duas instaladas com o mesmo bundle ID fazia
+o guard de instância matar uma e as duas competirem pelo mesmo CGEventTap do
+Globe → travamentos. **Nunca reverter o bundle ID da Debug para `app.getspit`.**
+A proibição de mudar o bundle ID refere-se só à **produção** (Keychain/licenças).
+
 ## Protocolo de rebuild (OBRIGATÓRIO após qualquer edit)
 
 Usa o slash command `/rebuild` — é o caminho canónico. Corresponde a:
 
 ```bash
-kill $(pgrep Spit) 2>/dev/null
+# Mata SÓ a Dev (por path), nunca a produção do utilizador
+pkill -f "DerivedData/VoiceFlow-hfayfoyiaxzwzjdermhtiguqxtnn/Build/Products/Debug/Spit Dev.app" 2>/dev/null
 cd "/Users/rafaellopes/Library/CloudStorage/GoogleDrive-rafa@rafamail.com/Meu Drive/Empreendedorismo/Spit"
 xcodebuild -project VoiceFlow.xcodeproj -scheme VoiceFlow -configuration Debug -destination 'platform=macOS' build
-open ~/Library/Developer/Xcode/DerivedData/VoiceFlow-hfayfoyiaxzwzjdermhtiguqxtnn/Build/Products/Debug/Spit.app
+open "$HOME/Library/Developer/Xcode/DerivedData/VoiceFlow-hfayfoyiaxzwzjdermhtiguqxtnn/Build/Products/Debug/Spit Dev.app"
 ```
 
 Não esperar que o utilizador peça — é automático.
@@ -50,10 +69,11 @@ Avise o usuário depois e feito para que ele possa testar.
 | Artefacto | Path |
 |---|---|
 | Código fonte | `/Users/rafaellopes/Library/CloudStorage/GoogleDrive-rafa@rafamail.com/Meu Drive/Empreendedorismo/Spit/VoiceFlow/` |
-| DerivedData app | `~/Library/Developer/Xcode/DerivedData/VoiceFlow-hfayfoyiaxzwzjdermhtiguqxtnn/Build/Products/Debug/Spit.app` |
-| **Debug log (runtime)** | `~/Library/Logs/Spit/spit-debug.log` |
+| DerivedData app (Dev) | `~/Library/Developer/Xcode/DerivedData/VoiceFlow-hfayfoyiaxzwzjdermhtiguqxtnn/Build/Products/Debug/Spit Dev.app` |
+| **Debug log (Dev, runtime)** | `~/Library/Containers/app.getspit.dev/Data/Library/Logs/Spit/spit-debug.log` |
+| Debug log (produção) | `~/Library/Containers/app.getspit/Data/Library/Logs/Spit/spit-debug.log` |
 | Crash reports | `~/Library/Logs/DiagnosticReports/Spit-*.ips` |
-| Settings (UserDefaults) | `~/Library/Containers/app.getspit/Data/Library/Preferences/app.getspit.plist` |
+| Settings Dev (UserDefaults) | `~/Library/Containers/app.getspit.dev/Data/Library/Preferences/app.getspit.dev.plist` |
 | Keychain service | `app.getspit` — chaves `byok.openai`, `byok.groq`, JWT de licença |
 
 **Regra de ouro de debugging:** `tail -200` do `spit-debug.log` antes de propor qualquer fix.
@@ -135,6 +155,48 @@ Ao acabar trabalho significativo, criar nota Kogno com:
 - Corpo: sintoma + causa raiz + fix (markdown conciso)
 
 Verificar antes com `search` se já existe — não duplicar.
+
+## Arquitectura JWT + Device ID — REGRAS CRÍTICAS (2026-04-29)
+
+Estas regras custaram um dia de debugging. **Não violar sem ler a nota Kogno
+"[Agente] Spit — Arquitectura JWT + Device ID (lições críticas)".**
+
+### Dois JWTs em Keychain — sempre sincronizados
+
+| Chave | Escrito por | Lido por |
+|---|---|---|
+| `spit-jwt` | `LicenseManager` (legacy) **e `AuthManager`** (sincronizado) | **Todos** os serviços proxy (transcribe, TTS, format, translate, vocab) |
+| `spit-auth-jwt` | `AuthManager.handleDeepLink()` (magic-link) | Só `AuthManager` → `/auth/me` |
+
+**Regra:** Sempre que `AuthManager` escrever `spit-auth-jwt`, tem de escrever
+também em `spit-jwt`. Implementado em `handleDeepLink`, `logout`,
+`refreshIfNeeded` e no `init` (migração). **Nunca remover esta sincronização.**
+
+### X-Device-ID — sempre enviado, mesmo com JWT
+
+```swift
+// CORRECTO — sempre ambos em paralelo
+request.setValue(LicenseManager.shared.deviceIdentifier(), forHTTPHeaderField: "X-Device-ID")
+if let jwt = LicenseManager.shared.getJWT() {
+    request.setValue("Bearer \(jwt)", forHTTPHeaderField: "Authorization")
+}
+```
+
+JWTs de `/auth/magic/verify` não têm `device` claim. O proxy usa o header
+`X-Device-ID` como fallback para auto-bind. Sem ele → 400 "missing device
+identifier". Afecta `ProxyTranscriptionService` e `ProxyTTSService`.
+
+### Proxy lê plano da DB, nunca do JWT
+
+O JWT pode ter `plan=trial` stale. Em `handleTranscribe` e `handleTTS` do
+Worker, o plano é sempre lido da DB: `plan = userRow.plan ?? claims.plan`.
+**Nunca reverter para `claims.plan` como fonte de verdade de plano.**
+
+### PRO_LIMIT_SECONDS=0 significa ilimitado
+
+`PRO_LIMIT_SECONDS = "0"` no wrangler.toml → sem limite de transcrição Pro.
+O check no Worker protege com `if (limitSecs > 0)` antes de comparar.
+`0 >= 0 = true` bloquearia toda a gente — **nunca remover o guard.**
 
 ## Proibições
 

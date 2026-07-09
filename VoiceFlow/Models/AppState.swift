@@ -133,7 +133,14 @@ struct AppSettings: Codable {
     // (risco aceite, conforme CLAUDE.md).
     // Utilizadores existentes mantêm a sua configuração guardada; este default
     // aplica-se apenas a instalações novas.
+    //
+    // Na build de DEV o default é ⌥ Option direito (keyCode 61) para não competir
+    // com o Globe da build de produção quando ambas correm em simultâneo.
+    #if DEBUG
+    var hotkeyKeyCode: UInt32 = 61   // ⌥ Option direito (Dev)
+    #else
     var hotkeyKeyCode: UInt32 = 63   // Globe / Fn
+    #endif
     var hotkeyModifiers: UInt32 = 0  // sem modificador
     var textQuality: TextQualitySettings = TextQualitySettings()
     var playSoundFeedback: Bool = true
@@ -160,7 +167,6 @@ struct AppSettings: Codable {
 
     // Local transcription
     var transcriptionEngine: TranscriptionEngine = .local
-    var localModel: LocalWhisperModel = .small
 
     // Read Selection (TTS)
     var ttsEnabled: Bool = true            // master toggle para leitura por voz
@@ -169,7 +175,10 @@ struct AppSettings: Codable {
     var ttsHotkeyModifiers: UInt32 = 2048  // optionKey (Carbon)
     var ttsVoiceIdentifier: String = ""  // "" = voz padrão do sistema
     var ttsVoice: TTSVoice = .nova       // AI voice for proxy/BYOK; .system = native macOS
+    var ttsEngine: TTSEngine = .chatterbox // .system = NSSpeechSynthesizer; .chatterbox = MLX Qwen3-TTS
     var ttsContextMenuEnabled: Bool = true // "Ler com Spit" no clique direito
+    // Inatividade do motor MLX TTS: minutos até descarregar da GPU/RAM. 0 = nunca descarregar.
+    var ttsInactivityMinutes: Int = 20
 
     // Privacidade
     var privacyModeEnabled: Bool = false   // tudo local, sem rede
@@ -182,7 +191,32 @@ struct AppSettings: Codable {
     /// Current schema version of AppSettings on disk.
     /// Bump this whenever defaults change in a way that existing installs should pick up,
     /// and add the corresponding branch in `migrateIfNeeded()`.
-    static let currentSchemaVersion: Int = 5
+    static let currentSchemaVersion: Int = 7
+
+    /// Maps interface language (BCP-47) → TTS language code supported by MLX TTS.
+    /// Returns "en" when the interface language has no equivalent TTS language.
+    static func ttsLanguageForInterface(_ interfaceLang: String) -> String {
+        let supported: Set<String> = ["zh","en","ja","ko","fr","de","es","it","pt","pt-BR","ru","nl","pl","tr","ar","hi","uk"]
+        let lower = interfaceLang.lowercased()
+        // Chinese variants
+        if lower.hasPrefix("zh") { return "zh" }
+        // Portuguese — distinguish BR vs PT
+        if lower.hasPrefix("pt-br") || lower.hasPrefix("pt_br") { return "pt-BR" }
+        if lower.hasPrefix("pt") { return "pt" }
+        let base = String(lower.prefix(2))
+        return supported.contains(base) ? base : "en"
+    }
+
+    /// Resolves the TTS language from settings:
+    /// - If ttsLanguage is set explicitly → use it
+    /// - If "auto" → derive from interfaceLanguage; "system" interface → detect OS locale
+    static func resolvedTTSLanguage(settings: AppSettings) -> String {
+        guard settings.ttsLanguage == "auto" else { return settings.ttsLanguage }
+        let iface = settings.interfaceLanguage == "system"
+            ? (Locale.preferredLanguages.first ?? "en")
+            : settings.interfaceLanguage
+        return ttsLanguageForInterface(iface)
+    }
 
     /// Detects the macOS system language and returns it if it's in the supported
     /// translation set (pt, pt-BR, en, es, fr, de, it). Returns nil for unsupported
@@ -255,6 +289,25 @@ struct AppSettings: Codable {
             settingsSchemaVersion = 5
             migrated = true
         }
+        if (settingsSchemaVersion ?? 0) < 6 {
+            // v5 → v6 (2026-06-22): introduce Chatterbox TTS engine.
+            settingsSchemaVersion = 6
+            migrated = true
+        }
+        if (settingsSchemaVersion ?? 0) < 7 {
+            // v6 → v7 (2026-06-22): switch default TTS engine to Chatterbox/Qwen3 for all users.
+            // Also pre-set ttsLanguage from interface language so the picker arrives pre-selected.
+            ttsEngine = .chatterbox
+            if ttsLanguage == "auto" {
+                ttsLanguage = AppSettings.ttsLanguageForInterface(
+                    interfaceLanguage == "system"
+                        ? (Locale.preferredLanguages.first ?? "en")
+                        : interfaceLanguage
+                )
+            }
+            settingsSchemaVersion = 7
+            migrated = true
+        }
         return migrated
     }
 
@@ -277,62 +330,15 @@ enum TranscriptionEngine: String, Codable {
     case local  // on-device via WhisperKit (free, unlimited, offline)
 }
 
-enum LocalWhisperModel: String, Codable, CaseIterable {
-    case tiny       = "openai_whisper-tiny"
-    case base       = "openai_whisper-base"
-    case small      = "openai_whisper-small"
-    case largeTurbo = "openai_whisper-large-v3_turbo"
+// MARK: - TTS Engine
 
-    var displayName: String {
-        switch self {
-        case .tiny:       return "Tiny"
-        case .base:       return "Base"
-        case .small:      return "Small"
-        case .largeTurbo: return "Large Turbo"
-        }
-    }
+enum TTSEngine: String, Codable {
+    case system      // native NSSpeechSynthesizer (always available, lower quality)
+    case chatterbox  // on-device Chatterbox via mlx-audio-swift (~1 GB, 23 languages)
+}
 
-    var sizeMB: Int {
-        switch self {
-        case .tiny:       return 75
-        case .base:       return 140
-        case .small:      return 466
-        case .largeTurbo: return 1500
-        }
-    }
-
-    var sizeLabel: String {
-        sizeMB >= 1000 ? String(format: "%.1f GB", Double(sizeMB) / 1000.0) : "\(sizeMB) MB"
-    }
-
-    var typicalLatency: String {
-        switch self {
-        case .tiny:       return "< 1s"
-        case .base:       return "≈ 1s"
-        case .small:      return "≈ 2s"
-        case .largeTurbo: return "≈ 8s"
-        }
-    }
-
-    /// 1 (slowest) → 4 (fastest)
-    var speedRank: Int {
-        switch self {
-        case .tiny:       return 4
-        case .base:       return 3
-        case .small:      return 2
-        case .largeTurbo: return 1
-        }
-    }
-
-    /// 1 (worst) → 4 (best)
-    var qualityRank: Int {
-        switch self {
-        case .tiny:       return 1
-        case .base:       return 2
-        case .small:      return 3
-        case .largeTurbo: return 4
-        }
-    }
+enum LocalWhisperModel: String, Codable {
+    case small = "openai_whisper-small"
 }
 
 // MARK: - Entrada de Vocabulário

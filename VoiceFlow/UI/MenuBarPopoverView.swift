@@ -9,10 +9,11 @@ struct MenuBarPopoverView: View {
     @EnvironmentObject var creditsManager: CreditsManager
     @EnvironmentObject var vocabularyManager: VocabularyManager
     @ObservedObject private var ttsService: TTSService = .shared
+    @ObservedObject private var localWhisper: LocalWhisperService = .shared
+    @ObservedObject private var mlxTTS: MLXTTSService = .shared
 
 
     @State private var now: Date = Date()
-    @State private var pendingUpdate: UpdateInfo? = nil
     private let timer = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
 
 
@@ -25,7 +26,6 @@ struct MenuBarPopoverView: View {
         VStack(spacing: 0) {
             headerView
             Divider()
-            updateAvailableBannerView  // banner azul quando há nova versão
             accessibilityWarningView   // banner vermelho quando AX não está concedida
             dictationBlockView
             Divider()
@@ -44,46 +44,7 @@ struct MenuBarPopoverView: View {
         .onReceive(timer) { now = $0 }
         .onAppear {
             now = Date()
-            // Re-check AX imediato ao abrir — evita falso positivo do banner
-            // vermelho quando isAccessibilityTrusted ainda está no valor inicial
-            // (false) antes do timer de 2s disparar pela primeira vez.
             dictationController.recheckAccessibility()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UpdateChecker.updateAvailableNotification)) { note in
-            pendingUpdate = note.userInfo?["info"] as? UpdateInfo
-        }
-    }
-
-    // MARK: - Update Available Banner
-
-    @ViewBuilder
-    private var updateAvailableBannerView: some View {
-        if let update = pendingUpdate {
-            Button {
-                UpdateChecker.shared.openDownloadPage()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "arrow.down.circle.fill")
-                        .foregroundColor(.blue)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Spit \(update.version) disponível")
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(.primary)
-                        Text("Clica para descarregar")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color.blue.opacity(0.08))
-            }
-            .buttonStyle(.plain)
-            Divider()
         }
     }
 
@@ -153,6 +114,13 @@ struct MenuBarPopoverView: View {
                 Text("ou mantenha pressionado (PTT)")
                     .font(.caption)
                     .foregroundColor(.secondary)
+            }
+
+            // ── Status do modelo Whisper (só visível quando não está pronto) ──
+            if localWhisper.isLoading {
+                modelStatusRow(icon: "hourglass", text: "A carregar modelo IA…", color: .orange)
+            } else if !localWhisper.isReady {
+                modelStatusRow(icon: "cpu", text: "Modelo não carregado · será carregado ao usar", color: .secondary)
             }
 
             // ── Linha de tradução ───────────────────────────────────────
@@ -225,6 +193,11 @@ struct MenuBarPopoverView: View {
             Text("Selecione texto e pressione a tecla de ação")
                 .font(.caption)
                 .foregroundColor(.secondary)
+
+            // ── Status do modelo TTS (só visível quando carregando) ──────
+            if mlxTTS.state == .loading {
+                modelStatusRow(icon: "hourglass", text: "A carregar modelo de voz…", color: .orange)
+            }
 
             // ── Linha de tradução ───────────────────────────────────────
             HStack(spacing: 6) {
@@ -619,36 +592,67 @@ struct MenuBarPopoverView: View {
     // MARK: - State colour helpers
 
     /// Dictation LED:
-    /// 🟢 Verde   — idle (pronto) + a gravar
-    /// 🟠 Laranja — a transcrever + a inserir texto
+    /// 🟢 Verde   — idle (modelo pronto) + a gravar
+    /// 🟠 Laranja — a transcrever / a inserir / modelo a carregar
+    /// ⚫ Cinzento — modelo descarregado (inativo, carrega ao usar)
     /// 🔴 Vermelho — erro
     private var dictationStateColor: Color {
         switch dictationController.state {
-        case .recording:            return .green
-        case .processing, .injecting: return .orange
-        case .error:                return .red
-        case .idle:                 return .green
+        case .recording:               return .green
+        case .processing, .injecting:  return .orange
+        case .error:                   return .red
+        case .idle:
+            if localWhisper.isLoading  { return .orange }
+            if !localWhisper.isReady   { return .secondary.opacity(0.5) }
+            return .green
         }
     }
 
     private var dictationStateTooltip: String {
         switch dictationController.state {
-        case .idle:                 return "Ditado pronto"
-        case .recording:            return "A gravar…"
-        case .processing:           return "A transcrever…"
-        case .injecting:            return "A inserir texto…"
-        case .error(let m):         return "Erro: \(m)"
+        case .idle:
+            if localWhisper.isLoading  { return "A carregar modelo IA…" }
+            if !localWhisper.isReady   { return "Modelo não carregado — será carregado ao usar" }
+            return "Ditado pronto"
+        case .recording:               return "A gravar…"
+        case .processing:              return "A transcrever…"
+        case .injecting:               return "A inserir texto…"
+        case .error(let m):            return "Erro: \(m)"
         }
     }
 
     /// TTS LED:
-    /// 🟢 Verde   — pronto para ler (inclui enquanto está a ler)
+    /// 🟢 Verde   — pronto (modelo em memória ou a falar)
+    /// 🟠 Laranja — modelo a carregar
+    /// ⚫ Cinzento — modelo em standby (carrega ao usar, ~2s)
     private var ttsLEDColor: Color {
-        return .green
+        switch mlxTTS.state {
+        case .loading:  return .orange
+        case .ready:    return .green
+        default:        return .secondary.opacity(0.4)
+        }
     }
 
     private var ttsLEDTooltip: String {
-        return ttsService.isSpeaking ? "A ler texto…" : "Leitura pronta"
+        if ttsService.isSpeaking       { return "A ler texto…" }
+        switch mlxTTS.state {
+        case .loading:  return "A carregar modelo de voz…"
+        case .ready:    return "Leitura pronta"
+        default:        return "Modelo em standby — carrega ao usar (~2s)"
+        }
+    }
+
+    // MARK: - Model status row
+
+    private func modelStatusRow(icon: String, text: String, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 9))
+                .foregroundColor(color)
+            Text(text)
+                .font(.system(size: 10))
+                .foregroundColor(color)
+        }
     }
 }
 

@@ -2,11 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Obrigatório para Mac App Store -->
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
+	<!-- Acesso ao microfone para gravação de voz -->
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
+	<!-- Update checker (fetches latest.json from GitHub to detect new releases) -->
 	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- Apple Events: ler o estado de reprodução do Spotify/Music para não
+	     retomar música que o utilizador pausou manualmente ao iniciar ditado -->
+	<key>com.apple.security.automation.apple-events</key>
 	<true/>
 </dict>
 </plist>

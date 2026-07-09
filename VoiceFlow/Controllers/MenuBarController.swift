@@ -37,6 +37,9 @@ class MenuBarController: NSObject {
             button.sendAction(on: .leftMouseDown)   // dispara no press, não no release — área efectiva = quadrado inteiro
             button.action = #selector(statusItemClicked(_:))
             button.target = self
+            #if DEBUG
+            button.toolTip = "Spit Dev (build de desenvolvimento)"
+            #endif
         }
 
         // NSPanel — nonactivatingPanel: não tira o foco da app onde o utilizador está a escrever
@@ -58,6 +61,7 @@ class MenuBarController: NSObject {
         // Observar mudanças de estado para actualizar ícone
         observeState()
         observeModelLoading()
+        observeModelReadiness()
     }
 
     // MARK: - Content
@@ -100,7 +104,68 @@ class MenuBarController: NSObject {
                         self.stopModelLoadingAnimation()
                     }
                 }
+                self.refreshIconTint()
             }
+    }
+
+    // MARK: - Observar prontidão do modelo (LED de estado no próprio ícone)
+
+    private func observeModelReadiness() {
+        // Quando o modelo fica pronto ou é descarregado (sem passar por isLoading,
+        // ex.: unload por pressão de memória), reflectir no tint do ícone.
+        LocalWhisperService.shared.$isReady
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.refreshIconTint() }
+            .store(in: &cancellables)
+    }
+
+    /// Símbolo SF actualmente a mostrar. A cor é calculada à parte em `applyIcon`.
+    private var currentSymbol = "waveform"
+
+    /// Cor de estado do ditado, ou `nil` para o ícone template normal (adapta-se
+    /// ao tema). Só colore quando idle; em gravação/processamento devolve nil e o
+    /// ícone segue o seu comportamento próprio (piscar, etc.).
+    private func statusTintColor() -> NSColor? {
+        guard case .idle = dictationController.state else { return nil }
+        let whisper = LocalWhisperService.shared
+        if whisper.isLoading { return .systemOrange }
+        if !whisper.isReady  { return .secondaryLabelColor }   // descarregado
+        return nil                                             // pronto → normal
+    }
+
+    /// Renderiza o ícone actual (`currentSymbol`) com a cor de estado.
+    ///
+    /// CRÍTICO: para a cor aparecer no menu bar, a imagem NÃO pode ser template
+    /// (`isTemplate = true` faz o macOS pintar tudo a preto/branco e ignorar a
+    /// cor). Quando há cor, usamos `SymbolConfiguration(paletteColors:)` e
+    /// `isTemplate = false`; quando "pronto", voltamos a template para adaptar
+    /// automaticamente a dark/light. `contentTintColor` NÃO é fiável em
+    /// NSStatusBarButton com imagens template — daí desenharmos a cor no símbolo.
+    private func applyIcon() {
+        guard let button = statusItem.button else { return }
+        // Build de DEV: ícone martelo, inconfundível com a produção (waveform).
+        // O tint de estado (cinza/laranja/normal) continua a aplicar-se por cima.
+        #if DEBUG
+        let symbol = "hammer.fill"
+        #else
+        let symbol = currentSymbol
+        #endif
+        if let color = statusTintColor() {
+            let cfg = NSImage.SymbolConfiguration(paletteColors: [color])
+            let img = NSImage(systemSymbolName: symbol, accessibilityDescription: "Spit")?
+                .withSymbolConfiguration(cfg)
+            img?.isTemplate = false
+            button.image = img
+        } else {
+            let img = NSImage(systemSymbolName: symbol, accessibilityDescription: "Spit")
+            img?.isTemplate = true
+            button.image = img
+        }
+    }
+
+    /// Reaplica só a cor (símbolo inalterado). Usado pelos observers de estado do modelo.
+    private func refreshIconTint() {
+        applyIcon()
     }
 
     private var modelLoadTimer: Timer?
@@ -112,10 +177,10 @@ class MenuBarController: NSObject {
         modelLoadFrame = 0
         modelLoadTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             DispatchQueue.main.async { [weak self] in
-                guard let self, let button = self.statusItem.button else { return }
+                guard let self else { return }
                 self.modelLoadFrame = (self.modelLoadFrame + 1) % self.modelLoadFrames.count
-                button.image = NSImage(systemSymbolName: self.modelLoadFrames[self.modelLoadFrame],
-                                       accessibilityDescription: "Loading model…")
+                self.currentSymbol = self.modelLoadFrames[self.modelLoadFrame]
+                self.applyIcon()   // laranja durante o loading (statusTintColor)
             }
         }
         // Also set tooltip
@@ -150,10 +215,8 @@ class MenuBarController: NSObject {
     }
 
     private func updateIcon(for state: DictationState) {
-        guard let button = statusItem.button else { return }
-
-        let iconName = state.menuBarIcon
-        button.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "Spit")
+        currentSymbol = state.menuBarIcon
+        applyIcon()
 
         switch state {
         case .recording:
