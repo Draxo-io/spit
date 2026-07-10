@@ -6,18 +6,18 @@
         <description>Spit release history</description>
         <language>en</language>
         <item>
-            <title>Spit 2.1</title>
-            <pubDate>Mon, 06 Jul 2026 11:33:51 +0000</pubDate>
-            <sparkle:version>12</sparkle:version>
-            <sparkle:shortVersionString>2.1</sparkle:shortVersionString>
+            <title>Spit 2.2</title>
+            <pubDate>Fri, 10 Jul 2026 10:14:48 +0000</pubDate>
+            <sparkle:version>13</sparkle:version>
+            <sparkle:shortVersionString>2.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-                <p>Changelog completo em <a href="https://github.com/Draxo-io/spit/releases/tag/v2.1">GitHub</a>.</p>
+                <p>Stability: fixes recurring spontaneous quits (Jetsam) by purging unused cached models, and ensures the app reliably relaunches itself after a forced quit.</p>
             ]]></description>
             <enclosure
-                url="https://github.com/Draxo-io/spit/releases/download/v2.1/Spit-2.1.dmg"
-                sparkle:edSignature="viwS8+oEAhPQgzV6EJ7MXJK9DD1uEGIkpY9dNdwjxfsc0vSmwAnVFYxtKGuQryqqsxcyp5pnpzXwzJuaKLezDg=="
-                length="17637771"
+                url="https://github.com/Draxo-io/spit/releases/download/v2.2/Spit-2.2.dmg"
+                sparkle:edSignature="0pmupaHG9Rqwn3bgdVG1K+r1uKitq+Nj20kn5Go2n9fxPqYZdK/H3qRAlX56L7iY9B/mJNzgtHIEqSGc9O/2Dg=="
+                length="17635406"
                 type="application/octet-stream"/>
         </item>
     </channel>
