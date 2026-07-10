@@ -8,6 +8,42 @@ Ordem: mais recente em cima.
 
 ---
 
+## 2026-07-10 — Auto-relaunch nunca funcionava + limitação real do sandbox
+
+**Ficheiros**: `Services/LaunchAgentManager.swift`, `App/AppDelegate.swift`, `Resources/app.getspit.relaunch.plist`
+
+**Sintoma**: a app fechava (Jetsam) e **não reabria**, apesar do LaunchAgent.
+
+**Causa raiz (diagnóstico por dados — `launchctl print`)**: o LaunchAgent falhava
+o spawn com `last exit code = 78: EX_CONFIG` + `needs LWCR update`. Duas razões:
+1. **LWCR/Launch Constraint stale**: launchd a spawnar o binário directamente
+   (`BundleProgram`) valida um code-requirement que fica desatualizado entre builds.
+2. **Conflito com o guard de instância única**: `RunAtLoad` criava uma 2ª instância
+   que o guard matava com exit 0 → launchd deixava de gerir o processo.
+
+**O que funciona (validado)**: um LaunchAgent de **utilizador** (em
+`~/Library/LaunchAgents`, NÃO via SMAppService) que corre `/bin/sh` e relança via
+`open` (LaunchServices, respeita assinatura). Check com `pgrep -x Spit` (nome
+exacto — `-f` faria self-match com a própria cmdline do watchdog). Marcador
+`.graceful_quit` para respeitar ⌘Q. Relança em ~2-30s após SIGKILL.
+
+**Limitação do sandbox (importante)**: uma app com App Sandbox **não pode**
+instalar um LaunchAgent de utilizador (não escreve em `~/Library/LaunchAgents`).
+A única via em-bundle é `SMAppService.agent`, mas esses agentes carregam um
+Launch Constraint que rejeita spawn de `/bin/sh` (EX_CONFIG). **Conclusão: o
+auto-relaunch robusto exige um agent de utilizador instalado fora da app.** Na
+máquina do Rafael foi instalado manualmente (`app.getspit.watchdog`, persiste
+em reboots). Para distribuição, a app regista o agent via SMAppService como
+best-effort, mas não é fiável.
+
+**Causa de fundo real**: o disco estava a **206 MB livres**. Disco cheio → pressão
+de memória do sistema → Jetsam mata apps de background. Nenhum fix da app
+substitui ter espaço livre — libertar disco é o que trava os kills na origem.
+
+**Lição**: `pgrep -f` com um pattern que aparece na própria cmdline faz
+self-match. SMAppService agents ≠ LaunchAgents de utilizador (têm Launch
+Constraint). E: verificar sempre o espaço em disco num diagnóstico de Jetsam.
+
 ## 2026-07-08 — App "fechava" recorrentemente: Jetsam + modelos-lixo a encher o disco
 
 **Ficheiros**: `Services/LocalWhisperService.swift`
