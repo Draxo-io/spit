@@ -1,8 +1,8 @@
 {
-  "version": "2.2",
-  "build": 13,
-  "date": "2026-07-10T10:14:49Z",
-  "url": "https://github.com/Draxo-io/spit/releases/download/v2.2/Spit-2.2.dmg",
-  "notes": "Changelog: https://github.com/Draxo-io/spit/releases/tag/v2.2",
+  "version": "2.3",
+  "build": 14,
+  "date": "2026-07-10T10:55:13Z",
+  "url": "https://github.com/Draxo-io/spit/releases/download/v2.3/Spit-2.3.dmg",
+  "notes": "Changelog: https://github.com/Draxo-io/spit/releases/tag/v2.3",
   "min_os": "14.0"
 }
