@@ -47,11 +47,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Instalar O MAIS CEDO POSSÍVEL para apanhar problemas no resto do setup.
         MainActor.assumeIsolated { CrashWatchdog.shared.install() }
 
-        // LaunchAgent: pede ao launchd para relançar a app em caso de crash ou
-        // saída anormal (NÃO relança em ⌘Q / NSApp.terminate). Idempotente.
-        // Só em Release: a build de dev NÃO se auto-relança — matar deve mantê-la
-        // morta durante o desenvolvimento, e evita conflito de label no launchd.
+        // Watchdog de relançamento: um LaunchAgent relança a app via `open` se ela
+        // não estiver a correr e não tiver saído deliberadamente (ver .plist).
+        // Removemos o marcador .graceful_quit aqui: a partir de agora, se a app
+        // morrer sem passar por applicationWillTerminate (crash/Jetsam), o marcador
+        // está ausente → o watchdog relança. Só em Release (a dev não se relança).
         #if !DEBUG
+        clearGracefulQuitMarker()
         MainActor.assumeIsolated { LaunchAgentManager.shared.register() }
         #endif
 
@@ -125,7 +127,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         // Marcar saída limpa para o próximo arranque não confundir com crash.
         MainActor.assumeIsolated { CrashWatchdog.shared.markGraceful() }
+        // Escrever o marcador que diz ao watchdog "foi o utilizador que saiu, NÃO
+        // relançar". Só sobrevive até ao próximo arranque, que o apaga. Um crash ou
+        // kill do Jetsam NÃO passa por aqui → marcador ausente → watchdog relança.
+        writeGracefulQuitMarker()
         dictationController?.teardown()
+    }
+
+    // MARK: - Marcador de saída limpa (para o watchdog de relançamento)
+
+    /// URL do marcador dentro do container sandbox — legível pelo watchdog (que
+    /// corre em contexto de utilizador, fora da sandbox).
+    private var gracefulQuitMarkerURL: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Spit", isDirectory: true)
+            .appendingPathComponent(".graceful_quit")
+    }
+
+    private func writeGracefulQuitMarker() {
+        guard let url = gracefulQuitMarkerURL else { return }
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? Data().write(to: url)
+    }
+
+    private func clearGracefulQuitMarker() {
+        guard let url = gracefulQuitMarkerURL else { return }
+        try? FileManager.default.removeItem(at: url)
     }
 
     // MARK: - Deep link handler
