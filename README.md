@@ -8,9 +8,9 @@ Free, open-source, 100% on-device voice dictation for Mac. No subscription, no c
 [![GitHub release](https://img.shields.io/github/v/release/Draxo-io/spit)](https://github.com/Draxo-io/spit/releases/latest)
 [![GitHub stars](https://img.shields.io/github/stars/Draxo-io/spit?style=social)](https://github.com/Draxo-io/spit/stargazers)
 
-<!-- TODO (Rafael): grava um GIF/vídeo curto (~10s) do Spit em uso real com Kap
-     e substitui esta linha por: ![Spit demo](docs/demo.gif)
-     É o maior multiplicador de conversão num README — ver GROWTH-PLAN.md § Pilar C. -->
+![Spit demo — dictating in Portuguese, text comes out in English](docs/demo.gif)
+
+*Real-time demo: dictating in **Portuguese** (live preview in the pill, bottom right) — Spit transcribes and translates on-device, and types the text in **English** into Notes.*
 
 ---
 
